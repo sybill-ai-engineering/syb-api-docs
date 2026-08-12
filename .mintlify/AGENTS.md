@@ -14,7 +14,7 @@
 - Use the terms **Import**, **Export**, and **Ask Sybill** for customer-facing permissions. Use `ingest`, `read`, and `ask_sybill` only for their API scope values.
 - Use camelCase for REST parameters and fields. Preserve snake_case only where the API explicitly documents it, including MCP tool parameters and the health response.
 - Do not document internal endpoints, admin-only behavior, implementation details, or private data models.
-- Keep cross-cutting REST behavior in `api-guide.mdx`. Keep endpoint-specific behavior in OpenAPI operation descriptions through `scripts/enrich-openapi.mjs`; do not recreate a parallel endpoint catalog.
+- Keep cross-cutting REST behavior in `api-guide.mdx`. Keep endpoint-specific behavior on the FastAPI routes in `flamingo-fer`, where it flows into OpenAPI operation descriptions; do not recreate a parallel endpoint catalog or post-process the generated specification.
 
 ## Writing style
 
@@ -32,7 +32,7 @@ When an API contract changes:
 
 1. Regenerate the OpenAPI specification from `flamingo-fer`.
 2. Replace `openapi.yaml` with the generated specification.
-3. Run `node scripts/enrich-openapi.mjs openapi.yaml` to restore endpoint context and public metadata.
+3. Update the FastAPI route metadata in `flamingo-fer` when endpoint-specific context changes, then regenerate and replace `openapi.yaml`.
 4. Update `api-guide.mdx` when shared conventions, workflows, visibility, or error behavior changes.
 5. Update `data-models.mdx` for request and response shape changes that benefit from a standalone model index.
 6. Update authentication, pagination, or rate-limit guides when the shared contract changes.

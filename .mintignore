@@ -9,7 +9,6 @@ drafts/
 # Agent configuration and lock files
 AGENTS.md
 .agents/
-scripts/
 skills-lock.json
 README.md
 LICENSE
