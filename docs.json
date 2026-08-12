@@ -136,7 +136,7 @@
           {
             "group": "Model Context Protocol",
             "pages": [
-              "mcp"
+              "mcp-server"
             ]
           }
         ]
