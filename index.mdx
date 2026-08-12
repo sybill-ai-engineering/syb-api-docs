@@ -6,14 +6,6 @@ icon: "house"
 
 The Sybill API provides programmatic access to your Sybill workspace — conversations, insights, and AI-powered analysis — via standard REST endpoints and an MCP interface for AI assistants.
 
-<Warning>
-
-**Alpha Notice**
-
-The Sybill API is currently in alpha. Endpoints, request/response schemas, rate limits, and behavior may change at any time without prior notice. We recommend against building production-critical integrations until the API reaches a stable release.
-
-</Warning>
-
 ## Base URL
 
 ```text
@@ -47,14 +39,6 @@ A successful response looks like:
 | REST API | `https://api.sybill.ai` | Read organization-visible conversations, deals, accounts, messages, rows, and documents, and import your own records via standard HTTP |
 | MCP | `https://mcp.sybill.ai/mcp` | Model Context Protocol server for AI assistants (Claude, Cursor, etc.) |
 
-## Data visibility and processing
-
-REST API keys operate with organization-level context rather than as a specific Sybill user. Read endpoints return records that are visible to the organization; they do not return private records owned by individual users. The MCP server uses the signed-in user's Sybill access.
-
-Records imported through `POST` endpoints are private by default and require at least one valid `ownerEmails` entry. Set `public: true` when the record should be visible through REST read endpoints.
-
-An import response confirms that Sybill stored the record and accepted it for asynchronous processing. Transcription, document conversion, summaries, and other derived fields may not be available immediately.
-
 ## Next steps
 
 <Columns cols={3}>
@@ -63,11 +47,15 @@ An import response confirms that Sybill stored the record and accepted it for as
 Learn how API keys and scopes work.
 </Card>
 
-<Card title="Endpoints" href="/endpoints" icon="zap">
-Explore available REST API endpoints.
+<Card title="API guide" href="/api-guide" icon="route">
+Understand shared conventions, workflows, visibility, and errors.
 </Card>
 
-<Card title="Data Models" href="/data-models" icon="braces">
+<Card title="API reference" href="/api-reference/health-check" icon="braces">
+Explore endpoints, parameters, schemas, and executable examples.
+</Card>
+
+<Card title="Data models" href="/data-models" icon="table-properties">
 Browse request and response schemas.
 </Card>
 
@@ -75,11 +63,11 @@ Browse request and response schemas.
 Iterate through paginated result sets.
 </Card>
 
-<Card title="MCP Server" href="/mcp" icon="bot">
+<Card title="MCP server" href="/mcp" icon="bot">
 Connect AI assistants via the MCP protocol.
 </Card>
 
-<Card title="OpenAPI Spec" href="/openapi.yaml" icon="file-text">
+<Card title="OpenAPI spec" href="/openapi.yaml" icon="file-text">
 Download the machine-readable API specification.
 </Card>
 

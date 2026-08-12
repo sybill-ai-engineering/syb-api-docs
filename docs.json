@@ -8,6 +8,9 @@
     "light": "#60CAFD",
     "dark": "#0077B6"
   },
+  "icons": {
+    "library": "lucide"
+  },
   "favicon": "/favicon.svg",
   "logo": {
     "light": "/logo/light.svg",
@@ -28,7 +31,7 @@
           {
             "group": "REST API",
             "pages": [
-              "endpoints",
+              "api-guide",
               "data-models",
               "pagination",
               "rate-limiting"
@@ -182,6 +185,12 @@
       "vscode"
     ]
   },
+  "redirects": [
+    {
+      "source": "/endpoints",
+      "destination": "/api-guide"
+    }
+  ],
   "footer": {
     "socials": {
       "website": "https://www.sybill.ai",

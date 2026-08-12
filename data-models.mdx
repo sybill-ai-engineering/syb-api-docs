@@ -630,7 +630,7 @@ Shared base fields on every ingest `POST` body — [`ConversationRequest`](#conv
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | yes | Your remote identifier — unique within `(sourceId, archetype)` |
-| `sourceId` | string (UUID) | yes | A source you own (see [`POST /v1/sources`](/endpoints#post-v1sources)) |
+| `sourceId` | string (UUID) | yes | A source you own (see [`POST /v1/sources`](/api-reference/create-source)) |
 | `createdAt` | string \| number | varies | Source-system creation timestamp. Required for conversations and messages; optional for rows and documents. Accepts ISO 8601, Unix seconds, or Unix milliseconds. |
 | `updatedAt` | string \| number \| null | no | Source-system last-modified timestamp |
 | `public` | boolean | no | If `true`, all users in your organization can read the record. Defaults to `false` (only `ownerEmails` and admins can read). |

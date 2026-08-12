@@ -1,13 +1,9 @@
 openapi: 3.1.0
 info:
   title: Sybill API
-  version: 0.1.0-alpha
-  description: 'Programmatic access to your Sybill workspace — conversations, insights,
-    and AI-powered analysis.
-
-
-    **Alpha:** Endpoints, request/response schemas, rate limits, and behavior may
-    change at any time without prior notice.'
+  version: v1
+  description: >-
+    Programmatic access to your Sybill workspace through REST endpoints for exports, imports, and Ask Sybill.
   contact:
     name: Sybill
     url: https://www.sybill.ai
@@ -15,6 +11,8 @@ paths:
   /v1/health:
     get:
       summary: Health Check
+      description: |-
+        Validate an API key and return its organization ID and scopes. Any valid Sybill API key can call this endpoint.
       operationId: health_check_v1_health_get
       responses:
         '200':
@@ -30,8 +28,8 @@ paths:
   /v1/ask-sybill:
     post:
       summary: Ask Sybill
-      description: Run one org-scoped Ask Sybill question, waiting up to 60 seconds
-        for completion.
+      description: |-
+        Submit a one-shot question using organization-level Sybill data. Requires the **Ask Sybill** permission (`ask_sybill` scope). The request waits up to 60 seconds. A terminal run returns `200 OK`; a run still in progress returns `202 Accepted` with `Location` and `Retry-After` headers for polling.
       operationId: ask_sybill_v1_ask_sybill_post
       requestBody:
         content:
@@ -72,8 +70,8 @@ paths:
   /v1/ask-sybill/{threadId}/{runId}:
     get:
       summary: Get Ask Sybill Result
-      description: Wait up to 60 seconds for an org-scoped Ask Sybill run's result;
-        runs expire 30 days after creation.
+      description: |-
+        Wait up to 60 seconds for a previously submitted Ask Sybill run. Requires the **Ask Sybill** permission (`ask_sybill` scope). Terminal runs return `200 OK`; active runs return `202 Accepted` with polling headers. Runs remain accessible to the originating organization for 30 days.
       operationId: get_ask_sybill_result_v1_ask_sybill__threadId___runId__get
       security:
       - HTTPBearer: []
@@ -123,7 +121,8 @@ paths:
   /v1/conversations:
     get:
       summary: List Conversations
-      description: List conversations accessible to the API key's organization.
+      description: |-
+        List organization-visible conversations. Requires the **Export** permission (`read` scope). Private conversations owned by individual users are excluded. Results use cursor-based pagination; `sourceId` accepts a custom source UUID or one of the native meeting-provider identifiers listed below.
       operationId: list_conversations_v1_conversations_get
       security:
       - HTTPBearer: []
@@ -254,7 +253,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
-      summary: Ingest Conversation
+      summary: Import Conversation
+      description: |-
+        Import a conversation into Sybill. Requires the **Import** permission (`ingest` scope). Include a non-empty transcript, a recording URL, or both. A `201 Created` response confirms acceptance for asynchronous transcription and enrichment; derived fields may not be available immediately.
       operationId: ingest_conversation_v1_conversations_post
       security:
       - HTTPBearer: []
@@ -278,7 +279,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      summary: Delete Conversation Ingest
+      summary: Delete Imported Conversation
+      description: |-
+        Soft-delete a conversation previously imported through this API. Requires the **Import** permission (`ingest` scope). Identify the record with the custom source UUID and the external ID originally supplied as `id`.
       operationId: delete_conversation_ingest_v1_conversations_delete
       security:
       - HTTPBearer: []
@@ -312,7 +315,8 @@ paths:
   /v1/conversations/{conversationId}:
     get:
       summary: Get Conversation
-      description: Get the detailed view for a single conversation.
+      description: |-
+        Return the available details for one organization-visible conversation, including transcript, recordings, and AI-generated summary when present. Requires the **Export** permission (`read` scope). Private conversations owned by individual users are excluded.
       operationId: get_conversation_v1_conversations__conversationId__get
       security:
       - HTTPBearer: []
@@ -340,7 +344,8 @@ paths:
   /v1/deals:
     get:
       summary: List Deals
-      description: List deals accessible to the API key's organization.
+      description: |-
+        List CRM deals available to the API key's organization. Requires the **Export** permission (`read` scope). Results use cursor-based pagination.
       operationId: list_deals_v1_deals_get
       security:
       - HTTPBearer: []
@@ -484,7 +489,8 @@ paths:
   /v1/deals/{dealId}:
     get:
       summary: Get Deal
-      description: Get the detailed view for a single deal.
+      description: |-
+        Return the available details for one CRM deal, including its AI-generated summary, CRM autofill suggestions, and contacts when present. Requires the **Export** permission (`read` scope).
       operationId: get_deal_v1_deals__dealId__get
       security:
       - HTTPBearer: []
@@ -511,7 +517,8 @@ paths:
   /v1/accounts:
     get:
       summary: List Accounts
-      description: List accounts accessible to the API key's organization.
+      description: |-
+        List CRM accounts available to the API key's organization. Requires the **Export** permission (`read` scope). Results use cursor-based pagination.
       operationId: list_accounts_v1_accounts_get
       security:
       - HTTPBearer: []
@@ -623,7 +630,8 @@ paths:
   /v1/accounts/{accountId}:
     get:
       summary: Get Account
-      description: Get the detailed view for a single account.
+      description: |-
+        Return the available details for one CRM account, including contacts and synced CRM fields when present. Requires the **Export** permission (`read` scope).
       operationId: get_account_v1_accounts__accountId__get
       security:
       - HTTPBearer: []
@@ -650,6 +658,8 @@ paths:
   /v1/messages:
     get:
       summary: List Messages
+      description: |-
+        List organization-visible messages from native email and CRM integrations or custom sources. Requires the **Export** permission (`read` scope). Private messages owned by individual users are excluded. Results use cursor-based pagination.
       operationId: list_messages_v1_messages_get
       security:
       - HTTPBearer: []
@@ -740,7 +750,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
-      summary: Ingest Message
+      summary: Import Message
+      description: |-
+        Import a message into Sybill. Requires the **Import** permission (`ingest` scope). A `201 Created` response confirms acceptance for asynchronous processing; derived fields may not be available immediately.
       operationId: ingest_message_v1_messages_post
       security:
       - HTTPBearer: []
@@ -764,7 +776,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      summary: Delete Message Ingest
+      summary: Delete Imported Message
+      description: |-
+        Soft-delete a message previously imported through this API. Requires the **Import** permission (`ingest` scope). Identify the record with the custom source UUID and the external ID originally supplied as `id`.
       operationId: delete_message_ingest_v1_messages_delete
       security:
       - HTTPBearer: []
@@ -798,6 +812,8 @@ paths:
   /v1/messages/{messageId}:
     get:
       summary: Get Message
+      description: |-
+        Return the available details for one organization-visible message, including its body and attachment metadata. Requires the **Export** permission (`read` scope). Private messages owned by individual users are excluded.
       operationId: get_message_v1_messages__messageId__get
       security:
       - HTTPBearer: []
@@ -824,7 +840,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/rows:
     post:
-      summary: Ingest Row
+      summary: Import Row
+      description: |-
+        Import a typed custom row. Requires the **Import** permission (`ingest` scope). Create its object type first, then ensure each field value matches the object type's schema. A `201 Created` response confirms acceptance for asynchronous processing.
       operationId: ingest_row_v1_rows_post
       security:
       - HTTPBearer: []
@@ -848,7 +866,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
-      summary: Update Row Ingest Route
+      summary: Update Imported Row
+      description: |-
+        Partially update an imported row. Requires the **Import** permission (`ingest` scope). The `fields` map follows RFC 7396 merge-patch behavior: supplied keys replace values, omitted keys remain unchanged, and `null` deletes a field. `null` values for top-level fields are ignored.
       operationId: update_row_ingest_route_v1_rows_patch
       security:
       - HTTPBearer: []
@@ -886,7 +906,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      summary: Delete Row Ingest
+      summary: Delete Imported Row
+      description: |-
+        Soft-delete an imported row. Requires the **Import** permission (`ingest` scope). Identify the row with its custom source UUID and external ID.
       operationId: delete_row_ingest_v1_rows_delete
       security:
       - HTTPBearer: []
@@ -919,6 +941,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       summary: List Rows
+      description: |-
+        List organization-visible custom rows. Requires the **Export** permission (`read` scope). Private rows owned by individual users are excluded. Rows accept custom source UUIDs only and use cursor-based pagination.
       operationId: list_rows_v1_rows_get
       security:
       - HTTPBearer: []
@@ -1007,6 +1031,8 @@ paths:
   /v1/rows/{rowId}:
     get:
       summary: Get Row
+      description: |-
+        Return one organization-visible custom row by its Sybill ID. Requires the **Export** permission (`read` scope). The response shape matches a row returned by the list endpoint.
       operationId: get_row_v1_rows__rowId__get
       security:
       - HTTPBearer: []
@@ -1034,6 +1060,8 @@ paths:
   /v1/sources:
     post:
       summary: Create Source
+      description: |-
+        Create a logical source for records imported into Sybill. Requires the **Import** permission (`ingest` scope). The source `name` is a stable machine identifier that must be unique within the organization; `displayName` is shown in the Sybill UI.
       operationId: create_source_v1_sources_post
       security:
       - HTTPBearer: []
@@ -1058,6 +1086,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       summary: List Sources
+      description: |-
+        List custom sources in the API key's organization. Requires the **Export** permission (`read` scope).
       operationId: list_sources_v1_sources_get
       security:
       - HTTPBearer: []
@@ -1087,6 +1117,8 @@ paths:
   /v1/sources/{sourceId}:
     get:
       summary: Get Source
+      description: |-
+        Return one custom source owned by the API key's organization. Requires the **Export** permission (`read` scope).
       operationId: get_source_v1_sources__sourceId__get
       security:
       - HTTPBearer: []
@@ -1113,6 +1145,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
       summary: Update Source
+      description: |-
+        Update a source's `displayName`. Requires the **Import** permission (`ingest` scope). The stable machine-readable `name` cannot be changed.
       operationId: update_source_v1_sources__sourceId__patch
       security:
       - HTTPBearer: []
@@ -1145,6 +1179,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       summary: Delete Source
+      description: |-
+        Delete a custom source. Requires the **Import** permission (`ingest` scope). Deletion prevents future imports through the source but does not delete records or object types previously created under it.
       operationId: delete_source_v1_sources__sourceId__delete
       security:
       - HTTPBearer: []
@@ -1172,6 +1208,8 @@ paths:
   /v1/object-types:
     post:
       summary: Create Object Type
+      description: |-
+        Create a typed schema for custom rows within a source. Requires the **Import** permission (`ingest` scope). Field names must be unique, and each field definition declares the accepted value type.
       operationId: create_object_type_v1_object_types_post
       security:
       - HTTPBearer: []
@@ -1196,6 +1234,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       summary: List Object Types
+      description: |-
+        List row object types in the API key's organization, optionally filtered by source. Requires the **Export** permission (`read` scope).
       operationId: list_object_types_v1_object_types_get
       security:
       - HTTPBearer: []
@@ -1225,6 +1265,8 @@ paths:
   /v1/object-types/{objectTypeId}:
     get:
       summary: Get Object Type
+      description: |-
+        Return one row object type owned by the API key's organization. Requires the **Export** permission (`read` scope).
       operationId: get_object_type_v1_object_types__objectTypeId__get
       security:
       - HTTPBearer: []
@@ -1251,6 +1293,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
       summary: Update Object Type
+      description: |-
+        Update an object type's display name or field definitions. Requires the **Import** permission (`ingest` scope). Supplying `fieldDefinitions` replaces the complete field schema.
       operationId: update_object_type_v1_object_types__objectTypeId__patch
       security:
       - HTTPBearer: []
@@ -1283,6 +1327,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       summary: Delete Object Type
+      description: |-
+        Delete an object type. Requires the **Import** permission (`ingest` scope). Existing rows remain readable, but new rows and updates can no longer use the deleted type.
       operationId: delete_object_type_v1_object_types__objectTypeId__delete
       security:
       - HTTPBearer: []
@@ -1310,6 +1356,8 @@ paths:
   /v1/documents:
     get:
       summary: List Documents
+      description: |-
+        List organization-visible documents from custom sources, chat uploads, and mailbox attachments. Requires the **Export** permission (`read` scope). Private documents owned by individual users are excluded. Results use cursor-based pagination.
       operationId: list_documents_v1_documents_get
       security:
       - HTTPBearer: []
@@ -1363,7 +1411,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
-      summary: Ingest Document
+      summary: Import Document
+      description: |-
+        Import a document. Requires the **Import** permission (`ingest` scope). Provide exactly one of `url` or base64-encoded `content`. A `201 Created` response confirms acceptance for asynchronous conversion and indexing; search and AI features may not include the document immediately.
       operationId: ingest_document_v1_documents_post
       security:
       - HTTPBearer: []
@@ -1387,7 +1437,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
-      summary: Update Document Ingest
+      summary: Update Imported Document
+      description: |-
+        Partially update an imported document. Requires the **Import** permission (`ingest` scope). Supplying `url` or `content` creates a new version and reprocesses the document; omitting both performs a metadata-only update. The author cannot be changed.
       operationId: update_document_ingest_v1_documents_patch
       security:
       - HTTPBearer: []
@@ -1425,7 +1477,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
-      summary: Delete Document Ingest
+      summary: Delete Imported Document
+      description: |-
+        Soft-delete a document previously imported through this API. Requires the **Import** permission (`ingest` scope). Identify the document with its custom source UUID and external ID.
       operationId: delete_document_ingest_v1_documents_delete
       security:
       - HTTPBearer: []
@@ -1459,6 +1513,8 @@ paths:
   /v1/documents/{documentId}:
     get:
       summary: Get Document
+      description: |-
+        Return the available details for one organization-visible document. Requires the **Export** permission (`read` scope). Private documents owned by individual users are excluded.
       operationId: get_document_v1_documents__documentId__get
       security:
       - HTTPBearer: []
