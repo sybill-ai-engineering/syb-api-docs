@@ -1,0 +1,698 @@
+---
+title: "Data models"
+description: "Request bodies, response shapes, shared objects, and field conventions used by the Sybill API."
+icon: "braces"
+---
+
+This page documents the request bodies and response shapes used by the Sybill API, organized by resource. Each resource section walks through its read shapes, write shapes, and any sub-objects it embeds; cross-cutting types that show up across many resources live in the [Reference](#reference) section at the bottom.
+
+<Info>
+
+**Conventions**
+
+Resource model field names are **camelCase**. The health response and structured error details have documented `org_id` and `request_id` exceptions. Timestamps are ISO 8601 strings in UTC unless noted otherwise — except in **request bodies** for `POST` / `PATCH` endpoints, where timestamp fields (`createdAt`, `updatedAt`, `startedAt`, `endedAt`, `timestamp`) accept ISO 8601 strings, Unix seconds, or Unix milliseconds (auto-detected). UUIDs are represented as strings. Fields marked *nullable* may be `null` or absent from the response.
+
+</Info>
+
+---
+
+## Conversations
+
+### Conversation (list)
+
+Returned by `GET /v1/conversations`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `conversationId` | string (UUID) | Unique identifier |
+| `sourceId` | string \| null | Origin of the conversation. Native meeting-provider string (e.g. `gong`) or a source UUID. |
+| `title` | string \| null | Meeting title |
+| `startTime` | string (ISO 8601) | Meeting start time |
+| `endTime` | string (ISO 8601) | Meeting end time |
+| `type` | string | `INTERNAL` or `EXTERNAL` |
+| `participants` | [Participant](#participant)[] | Meeting participants |
+| `crm` | [CrmInfo](#crminfo) \| null | Associated CRM record |
+
+```json
+{
+  "conversationId": "550e8400-e29b-41d4-a716-446655440000",
+  "sourceId": "gong",
+  "title": "Q4 Pipeline Review",
+  "startTime": "2023-11-14T22:13:20Z",
+  "endTime": "2023-11-15T00:13:20Z",
+  "type": "EXTERNAL",
+  "participants": [
+    { "name": "Jane Smith", "email": "jane@example.com", "attended": true }
+  ],
+  "crm": { "id": "006...", "name": "Acme Deal", "type": "opportunity" }
+}
+```
+
+---
+
+### Conversation (detail)
+
+Returned by `GET /v1/conversations/{conversationId}`. Extends the list shape with transcript, recordings, summary, and category.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| *(all fields from [Conversation list](#conversation-list))* | | |
+| `category` | string \| null | AI-classified category (see [Categories](#categories)) |
+| `summary` | object \| null | AI-generated meeting summary; keys vary by meeting type |
+| `transcript` | [TranscriptEntry](#transcriptentry)[] \| null | Speaker-segmented transcript |
+| `recordings` | [Recordings](#recordings) \| null | Signed video/audio recording URLs (download and stream variants) |
+
+---
+
+### ConversationRequest
+
+Request body for `POST /v1/conversations`. Extends [BaseRequest](#baserequest).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| *(all fields from [BaseRequest](#baserequest))* | | | |
+| `displayName` | string | no | Human-readable conversation title shown in Sybill. Defaults to an empty string when omitted. |
+| `transcript` | [TranscriptSentence](#transcriptsentence)[] | conditional | Pre-transcribed sentences (max 10,000). Required if `recordingUrl` is absent. |
+| `recordingUrl` | string \| null | conditional | URL Sybill can fetch to transcribe/enrich audio or video. Required if `transcript` is empty. |
+| `recordingMimeType` | string \| null | no | Hint for the recording's content type |
+| `startedAt` | string \| number | yes | When the meeting started |
+| `endedAt` | string \| number \| null | no | When the meeting ended. If provided, must be after `startedAt` and within 10 hours. |
+| `participants` | [Person](#person)[] | yes | 1–1000 attendees |
+
+At least one of `transcript` or `recordingUrl` must be provided. Each transcript sentence's `timestamp` must fall within `[startedAt, endedAt]` (or `[startedAt, startedAt + 10h]` if `endedAt` is omitted).
+
+---
+
+### Participant
+
+A person on a conversation read response.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string \| null | Display name |
+| `email` | string \| null | Email address |
+| `attended` | boolean | Whether the person actually attended (defaults to `true`) |
+
+---
+
+### CrmInfo
+
+CRM record (deal/account) linked to a conversation.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string \| null | CRM remote identifier |
+| `name` | string \| null | Deal/account name |
+| `type` | string \| null | One of `contact`, `account`, `opportunity`, `lead`, `owner`, `activity`, `task` |
+
+---
+
+### Recordings
+
+Signed URLs for meeting recordings on `ConversationDetail`. URLs expire after 24 hours.
+
+`videoUrl` and `audioUrl` are intended for downloading (the browser will save the file). For in-browser playback (e.g. inside a `<video>` or `<audio>` element), use `videoStreamUrl` and `audioStreamUrl` — these URLs serve the media inline with the correct `Content-Type` and support HTTP range requests for seeking and progressive buffering.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `videoUrl` | string \| null | Presigned URL to download the video recording (browsers save the file). Expires after 24 hours. `null` if no video recording is available. |
+| `videoStreamUrl` | string \| null | Presigned URL to stream the video recording inline in a media element. Expires after 24 hours. `null` if no video recording is available, or if streaming URLs are not enabled for your org. |
+| `audioUrl` | string \| null | Presigned URL to download the audio recording (browsers save the file). Expires after 24 hours. `null` if no audio recording is available. |
+| `audioStreamUrl` | string \| null | Presigned URL to stream the audio recording inline in a media element. Expires after 24 hours. `null` if no audio recording is available, or if streaming URLs are not enabled for your org. |
+
+---
+
+### TranscriptEntry
+
+A single segment of a meeting transcript on `ConversationDetail`. Returned by the read API — distinct from [TranscriptSentence](#transcriptsentence) which is the request-side shape callers send to ingest.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `speaker` | string | Name of the speaker |
+| `text` | string | What was said |
+| `startTime` | number | Offset in seconds from meeting start |
+| `endTime` | number | Offset in seconds from meeting start |
+
+---
+
+### TranscriptSentence
+
+A single transcript sentence in [`ConversationRequest.transcript`](#conversationrequest). Distinct from [TranscriptEntry](#transcriptentry) (the response-side shape).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `speakerId` | string \| null | conditional | Remote ID of the speaker. At least one of `speakerId` or `speakerName` is required. |
+| `speakerName` | string \| null | conditional | Display name of the speaker |
+| `text` | string | yes | Sentence text |
+| `timestamp` | string \| number | yes | **Absolute** timestamp (ISO 8601, Unix seconds, or Unix milliseconds). Relative offsets are rejected. |
+
+---
+
+### Categories
+
+Conversation `category` values returned on `ConversationDetail`.
+
+**External meetings** (`type: "EXTERNAL"`): `prospect_discovery`, `prospect_demo`, `prospect_trial`, `prospect_negotiation`, `closed_lost`, `closed_won`, `customer_onboarding`, `customer_support`, `customer_checkin`, `customer_commercials`, `interview`, `user_research`, `vendor_call`, `investor_call`, `advisor_call`, `other`.
+
+**Internal meetings** (`type: "INTERNAL"`): `one_on_one`, `sales_team`, `customer_team`, `marketing_team`, `product_team`, `engineering_team`, `it_team`, `hr_team`, `operations_team`, `finance_team`, `legal_team`, `investment_team`, `company_wide`, `other`.
+
+---
+
+## Messages
+
+### Message (list)
+
+Returned by `GET /v1/messages` as `MessageListItem`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `messageId` | string (UUID) | Sybill message identifier |
+| `sourceId` | string | Origin (UUID of a source you created, or a native string like `gmail`, `salesforce_crm`) |
+| `remoteId` | string \| null | Provider-assigned upstream identifier |
+| `threadId` | string \| null | Thread identifier |
+| `subject` | string \| null | Message subject line (when the upstream provider exposes one) |
+| `sender` | [MessageParty](#messageparty) \| null | Message sender |
+| `recipients` | [MessageParty](#messageparty)[] | Message recipients |
+| `bodyPreview` | string | Truncated preview of the body |
+| `createdAt` | string (ISO 8601) | Source-system creation time |
+
+---
+
+### Message (detail)
+
+Returned by `GET /v1/messages/{messageId}`. Extends the list shape with the full body and attachments.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| *(all fields from [Message list](#message-list))* | | |
+| `body` | string | Full message body |
+| `attachments` | [MessageAttachmentInfo](#messageattachmentinfo)[] | Attachment metadata (no inline content) |
+
+---
+
+### MessageRequest
+
+Request body for `POST /v1/messages`. Extends [BaseRequest](#baserequest).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| *(all fields from [BaseRequest](#baserequest))* | | | |
+| `displayName` | string | no | Message subject shown in Sybill. Defaults to an empty string when omitted. |
+| `body` | string (≤100,000) | yes | Message body (plain text) |
+| `sender` | [Person](#person) | yes | The message sender |
+| `recipients` | [Person](#person)[] | yes | 1–1000 recipients |
+| `attachments` | [Attachment](#attachment)[] | no | File attachments |
+| `threadId` | string \| null | no | Identifier grouping messages into a thread |
+
+---
+
+### MessageParty
+
+A sender or recipient on a message read response.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string \| null | Display name |
+| `email` | string \| null | Email address |
+
+---
+
+### MessageAttachmentInfo
+
+Trimmed attachment info on `MessageDetail`. Inline content is not exposed.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string (UUID) | Sybill attachment identifier |
+| `filename` | string \| null | Filename |
+| `contentType` | string \| null | MIME type |
+| `size` | integer \| null | File size in bytes |
+
+---
+
+### Attachment
+
+Attachment metadata used by [`MessageRequest.attachments`](#messagerequest). Distinct from [MessageAttachmentInfo](#messageattachmentinfo) (the response-side shape).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | yes | Attachment filename |
+| `url` | string | yes | URL Sybill can fetch to retrieve the attachment |
+| `mimeType` | string \| null | no | MIME type |
+| `sizeBytes` | integer \| null | no | File size in bytes |
+
+---
+
+## Rows
+
+### Row list and detail
+
+Returned by `GET /v1/rows` and `GET /v1/rows/{rowId}` as `RowListItem` (the detail shape is identical).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `rowId` | string (UUID) | Sybill row identifier |
+| `sourceId` | string | UUID of the source the row belongs to |
+| `objectTypeId` | string (UUID) | Object type the row conforms to |
+| `objectTypeName` | string | Object type's machine name |
+| `remoteId` | string | Your `id` supplied at create time |
+| `name` | string | Row primary name |
+| `fields` | object of [FieldValueResponse](#fieldvalueresponse) values | Field map keyed by field name |
+| `createdAt` | string (ISO 8601) \| null | Caller-supplied source creation timestamp (the ``createdAt`` from the original ingest payload) |
+| `updatedAt` | string (ISO 8601) \| null | Caller-supplied source last-modified timestamp |
+
+---
+
+### RowRequest
+
+Request body for `POST /v1/rows`. Extends [BaseRequest](#baserequest).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| *(all fields from [BaseRequest](#baserequest) — `createdAt` is optional here)* | | | |
+| `objectTypeId` | string (UUID) | yes | The object type this row conforms to |
+| `name` | string (1–1000) | yes | Primary display name for the row |
+| `fields` | object of [RowFieldValue](#rowfieldvalue) values | yes | 1–50 typed field values keyed by field name |
+
+---
+
+### UpdateRowRequest
+
+Request body for `PATCH /v1/rows`.
+
+All fields optional. Top-level fields (`name`, `public`, `ownerEmails`, `updatedAt`) are not nullable — passing `null` is silently ignored. The `fields` map merges per RFC 7396: keys present overwrite, keys absent are preserved, and an explicit `null` value deletes the key.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string (1–1000) \| null | New row primary name |
+| `public` | boolean \| null | Toggle visibility |
+| `ownerEmails` | string[] \| null | Replace owner list |
+| `updatedAt` | string \| number \| null | New source-system updated-at timestamp |
+| `fields` | object of [RowFieldValue](#rowfieldvalue) or `null` values \| null | Field merge map |
+
+---
+
+### FieldValueResponse
+
+A typed field value returned inside [`Row.fields`](#row-list-and-detail).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `value` | any | Field value (shape determined by `fieldType`) |
+| `fieldType` | string | Declared field type (see [FieldTypes](#fieldtypes)) |
+| `label` | string \| null | Display label |
+
+---
+
+### RowFieldValue
+
+Typed field value used inside [`RowRequest.fields`](#rowrequest) and [`UpdateRowRequest.fields`](#updaterowrequest). Distinct from [FieldValueResponse](#fieldvalueresponse) (the response-side shape).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `value` | any | yes | The field value (shape determined by `fieldType`) |
+| `fieldType` | string ([FieldTypes](#fieldtypes)) | yes | Must match the object type's declared `fieldType` for this field |
+| `label` | string \| null | no | Optional human-readable label for the value |
+
+---
+
+## Documents
+
+### Document (list)
+
+Returned by `GET /v1/documents`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string | Sybill document identifier |
+| `displayName` | string | Display name |
+| `sourceId` | string | Origin (UUID of a source you created, `chat_upload`, or `mailbox_attachment` for email attachments) |
+| `remoteId` | string | Your `id` supplied at create time (or the source system's id) |
+| `url` | string \| null | Original external URL, when the source provides one. `null` for content uploads and mailbox attachments. |
+| `contentType` | string | MIME type |
+| `createdAt` | string \| null | Source-system creation timestamp |
+| `updatedAt` | string \| null | Source-system update timestamp |
+
+---
+
+### Document (detail)
+
+Returned by `GET /v1/documents/{documentId}`. The response uses the same fields as the [document list item](#document-list).
+
+---
+
+### DocumentRequest
+
+Request body for `POST /v1/documents`. Extends [BaseRequest](#baserequest).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| *(all fields from [BaseRequest](#baserequest) — `createdAt` is optional here)* | | | |
+| `displayName` | string \| null | no | Human-readable document name shown in Sybill. Defaults to `filename` when supplied, otherwise the URL path filename for URL documents. Required for content uploads when `filename` is omitted. |
+| `url` | string \| null | conditional | URL Sybill can fetch to retrieve the document |
+| `content` | string \| null | conditional | Base64-encoded document bytes |
+| `filename` | string \| null | no | Suggested filename when only `content` is supplied |
+| `contentType` | string | no | MIME type. Defaults to `text/plain`. |
+| `author` | [Person](#person) \| null | no | Document author. Cannot be changed via PATCH. |
+
+Exactly one of `url` or `content` must be provided. If `displayName` is omitted, Sybill uses `filename` when present, otherwise the URL path filename for URL documents. Content uploads must include either `displayName` or `filename`.
+
+---
+
+### UpdateDocumentRequest
+
+Request body for `PATCH /v1/documents`.
+
+All fields optional. Supplying `url` or `content` creates a new version and reprocesses the document. A PATCH with neither performs a metadata-only update.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `displayName` | string \| null | New display name |
+| `public` | boolean \| null | Toggle visibility |
+| `ownerEmails` | string[] \| null | Replace owner list |
+| `updatedAt` | string \| number \| null | New source-system updated-at timestamp |
+| `url` | string \| null | New source URL (mutually exclusive with `content`) |
+| `content` | string \| null | New base64 content (mutually exclusive with `url`) |
+| `filename` | string \| null | New filename hint |
+| `contentType` | string \| null | New MIME type |
+
+`author` is intentionally not updatable. To change a document's author, delete and recreate.
+
+---
+
+## Deals
+
+### Deal (list)
+
+Returned by `GET /v1/deals`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `dealId` | string | CRM remote identifier |
+| `name` | string \| null | Deal name |
+| `accountName` | string \| null | Associated account name |
+| `stage` | string \| null | Pipeline stage |
+| `pipeline` | string \| null | Pipeline name |
+| `amount` | number \| null | Deal value |
+| `closeDate` | string (ISO 8601) \| null | Expected or actual close date |
+| `closed` | boolean \| null | Whether the deal is closed (won or lost) |
+| `createdDate` | string (ISO 8601) \| null | Created date in the CRM |
+| `lastActivityDate` | string (ISO 8601) \| null | Most recent activity date |
+| `owner` | [Owner](#owner) \| null | Deal owner |
+
+---
+
+### Deal (detail)
+
+Returned by `GET /v1/deals/{dealId}`. Extends the list shape with summary, CRM autofill, and contacts.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| *(all fields from [Deal list](#deal-list))* | | |
+| `summary` | object \| null | AI-generated deal summary with dynamic keys |
+| `crmAutofill` | object \| null | Suggested CRM field updates from AI analysis |
+| `contacts` | [Contact](#contact)[] | People associated with the deal |
+
+---
+
+### Owner
+
+The owner of a CRM deal or account. Used by both [Deal](#deal-list) and [Account](#account-list) responses.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string \| null | Display name |
+| `email` | string \| null | Email address |
+
+---
+
+### Contact
+
+A person associated with a CRM deal or account. Used by both [Deal (detail)](#deal-detail) and [Account (detail)](#account-detail) responses.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string \| null | Full name |
+| `email` | string \| null | Email address |
+| `title` | string \| null | Job title |
+| `phone` | string \| null | Phone number |
+
+---
+
+## Accounts
+
+### Account (list)
+
+Returned by `GET /v1/accounts`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `accountId` | string | CRM remote identifier |
+| `name` | string \| null | Account name |
+| `website` | string \| null | Website URL |
+| `owner` | [Owner](#owner) \| null | Account owner |
+| `createdDate` | string (ISO 8601) \| null | Created date in the CRM |
+| `lastActivityDate` | string (ISO 8601) \| null | Most recent activity date |
+| `latestDeal` | [LatestDeal](#latestdeal) \| null | Most recent open deal (or most recent closed if no open) |
+
+---
+
+### Account (detail)
+
+Returned by `GET /v1/accounts/{accountId}`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| *(all fields from [Account list](#account-list))* | | |
+| `contacts` | [Contact](#contact)[] | People associated with the account |
+| `syncedCrmFields` | object \| null | Label-to-value map of all synced CRM fields |
+
+---
+
+### LatestDeal
+
+The most recent deal associated with an account. Selection: latest open deal by creation date; if no open deals, latest closed deal by creation date.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `dealId` | string | CRM remote identifier |
+| `name` | string \| null | Deal name |
+| `stage` | string \| null | Pipeline stage |
+| `amount` | number \| null | Deal value |
+| `closeDate` | string (ISO 8601) \| null | Expected or actual close date |
+
+---
+
+## Sources
+
+### SourceResponse
+
+Returned by source endpoints (`GET` / `POST` / `PATCH /v1/sources` and `/v1/sources/{sourceId}`).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string (UUID) | Source identifier |
+| `name` | string | Stable machine identifier |
+| `displayName` | string | Display name |
+| `createdAt` | string (ISO 8601) | When the source was created |
+| `updatedAt` | string (ISO 8601) | Last modification time |
+
+---
+
+### CreateSourceRequest
+
+Request body for `POST /v1/sources`.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string (1–255) | yes | Stable machine identifier; unique within your organization |
+| `displayName` | string (1–255) | yes | Display name shown in Sybill |
+
+---
+
+### UpdateSourceRequest
+
+Request body for `PATCH /v1/sources/{sourceId}`. Only `displayName` is mutable; `name` is immutable.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `displayName` | string (1–255) | yes | New display name |
+
+---
+
+## Object types
+
+### ObjectTypeResponse
+
+Returned by object-type endpoints.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string (UUID) | Object type identifier |
+| `sourceId` | string (UUID) | Source it belongs to |
+| `name` | string | Stable machine identifier |
+| `displayName` | string | Display name |
+| `fieldDefinitions` | [FieldDefinitionResponse](#fielddefinitionresponse)[] | Field definitions |
+| `createdAt` | string (ISO 8601) | Creation time |
+| `updatedAt` | string (ISO 8601) | Last modification time |
+
+---
+
+### CreateObjectTypeRequest
+
+Request body for `POST /v1/object-types`.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sourceId` | string (UUID) | yes | The source this object type belongs to |
+| `name` | string (1–255) | yes | Stable machine identifier; unique within `(sourceId)` |
+| `displayName` | string (1–255) | yes | Display name shown in Sybill |
+| `fieldDefinitions` | [FieldDefinitionRequest](#fielddefinitionrequest)[] | yes | 1–50 field definitions; names must be unique |
+
+---
+
+### UpdateObjectTypeRequest
+
+Request body for `PATCH /v1/object-types/{objectTypeId}`. Both fields optional; supplying `fieldDefinitions` replaces the full schema.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `displayName` | string (1–255) \| null | New display name |
+| `fieldDefinitions` | [FieldDefinitionRequest](#fielddefinitionrequest)[] \| null | New schema |
+
+---
+
+### FieldDefinitionRequest
+
+A single field declaration on a `CreateObjectTypeRequest` or `UpdateObjectTypeRequest`.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string (1–255) | yes | Field name (must be unique within an object type) |
+| `fieldType` | string ([FieldTypes](#fieldtypes)) | yes | Declared type |
+| `label` | string \| null | no | Display label |
+| `required` | boolean | no | Defaults to `false` |
+
+---
+
+### FieldDefinitionResponse
+
+A single field declaration on `ObjectTypeResponse`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string | Field name |
+| `fieldType` | string ([FieldTypes](#fieldtypes)) | Declared type |
+| `label` | string \| null | Display label |
+| `required` | boolean | Whether the field is required |
+
+---
+
+### FieldTypes
+
+Enum used by [`FieldDefinitionRequest.fieldType`](#fielddefinitionrequest), [`FieldDefinitionResponse.fieldType`](#fielddefinitionresponse), [`RowFieldValue.fieldType`](#rowfieldvalue), and [`FieldValueResponse.fieldType`](#fieldvalueresponse).
+
+| Value | Description |
+| --- | --- |
+| `textarea` | Multi-line string |
+| `string` | Single-line string |
+| `boolean` | `true` / `false` |
+| `int` | Signed integer |
+| `double` | Floating-point number |
+| `datetime` | ISO 8601 datetime |
+| `date` | ISO 8601 date |
+| `list` | Generic list of values |
+
+---
+
+## Reference
+
+Cross-cutting types reused across multiple resources or endpoints. They live here rather than being duplicated under every resource section.
+
+### Person
+
+A person reference attached to ingest request bodies. Used by [`ConversationRequest.participants`](#conversationrequest), [`MessageRequest.sender` / `.recipients`](#messagerequest), and [`DocumentRequest.author`](#documentrequest).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string \| null | Your remote identifier for the person |
+| `name` | string \| null | Display name |
+| `email` | string \| null | Email address |
+
+At least one of `id` or `email` must be supplied.
+
+---
+
+### BaseRequest
+
+Shared base fields on every ingest `POST` body — [`ConversationRequest`](#conversationrequest), [`MessageRequest`](#messagerequest), [`RowRequest`](#rowrequest), and [`DocumentRequest`](#documentrequest) all extend this.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | yes | Your remote identifier — unique within `(sourceId, archetype)` |
+| `sourceId` | string (UUID) | yes | A source you own (see [`POST /v1/sources`](/endpoints#post-v1sources)) |
+| `createdAt` | string \| number | varies | Source-system creation timestamp. Required for conversations and messages; optional for rows and documents. Accepts ISO 8601, Unix seconds, or Unix milliseconds. |
+| `updatedAt` | string \| number \| null | no | Source-system last-modified timestamp |
+| `public` | boolean | no | If `true`, all users in your organization can read the record. Defaults to `false` (only `ownerEmails` and admins can read). |
+| `ownerEmails` | string[] | no | Email addresses of users who own the record |
+
+Private records (`public: false`) must include at least one valid `ownerEmails` entry. REST API keys do not have user context and therefore cannot read private records; use `public: true` for records that must be available through REST read endpoints.
+
+---
+
+### RecordResponse
+
+Returned by `POST` on `/v1/conversations`, `/v1/messages`, `/v1/rows`, and `/v1/documents`, and by `PATCH` on `/v1/rows` and `/v1/documents`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | string ([RecordStatus](#recordstatus)) | `created` when a new record is accepted for processing, or `updated` when an update is accepted |
+| `recordId` | string | Sybill record UUID |
+| `id` | string | Your remote `id` echoed back |
+| `sourceId` | string | The source the record belongs to |
+
+---
+
+### RecordStatus
+
+Enum used in [`RecordResponse.status`](#recordresponse): `created` or `updated`.
+
+---
+
+### DeletedRecordResponse
+
+Returned by `DELETE` on `/v1/conversations`, `/v1/messages`, `/v1/rows`, and `/v1/documents`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | string | Always `deleted` |
+| `recordId` | string | Sybill record UUID |
+| `id` | string | Your remote `id` |
+| `sourceId` | string | The source the record belonged to |
+| `deletedAt` | string (ISO 8601) | When the record was soft-deleted |
+
+---
+
+### ErrorResponse
+
+Body of the `detail` field on `400` / `403` / `404` / `409` / `411` / `413` responses from the `POST` / `PATCH` / `DELETE` endpoints.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `error` | string | Machine-readable error code (`validation_error`, `forbidden`, `conflict`, `not_found`, `length_required`, `payload_too_large`) |
+| `message` | string | Human-readable description |
+| `field` | string \| null | Field name that triggered the error, if applicable |
+| `request_id` | string | Correlation id for support |
+
+---
+
+### Pagination
+
+Wrapper returned inside the `pagination` field of every list endpoint (`/v1/conversations`, `/v1/deals`, `/v1/accounts`, `/v1/messages`, `/v1/rows`, `/v1/documents`).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `nextCursor` | string \| null | Opaque cursor for the next page. `null` if no more results. |
+| `hasMore` | boolean | `true` if additional pages exist |
+
+Pass the `nextCursor` value back as the `cursor` query parameter to fetch the next page. See the [Pagination](/pagination) page for a full overview.

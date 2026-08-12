@@ -1,0 +1,149 @@
+---
+title: "Pagination"
+description: "Iterate through Sybill list endpoints with stable cursor-based pagination."
+icon: "list-end"
+---
+
+The conversations, deals, accounts, messages, rows, and documents list endpoints use **cursor-based pagination**. This provides efficient sequential access without relying on page numbers. Records added or deleted while you paginate can affect later pages, so complete an iteration promptly when you need a consistent snapshot.
+
+## How it works
+
+Every list endpoint returns the same `pagination` object alongside the results:
+
+```json
+{
+  "conversations": [ ... ],
+  "pagination": {
+    "nextCursor": "eyJzZWFyY2hBZnRlciI6...",
+    "hasMore": true
+  }
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `nextCursor` | string or null | An opaque token pointing to the next page. `null` when there are no more results. |
+| `hasMore` | boolean | `true` if additional pages exist beyond the current one. |
+
+## Fetching the next page
+
+Pass the `nextCursor` value as the `cursor` query parameter in your next request:
+
+```bash
+# First request
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" \
+  "https://api.sybill.ai/v1/conversations?limit=10"
+
+# Next page
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" \
+  "https://api.sybill.ai/v1/conversations?limit=10&cursor=eyJzZWFyY2hBZnRlciI6..."
+```
+
+<Info>
+
+**Cursor stability**
+
+Cursors are opaque strings. Do not parse, decode, construct, or store them as bookmarks. Always use the exact value returned by the API for the next request in the same iteration. On document lists, records with identical creation timestamps at a page boundary may be repeated or skipped.
+
+</Info>
+
+## Controlling page size
+
+Use the `limit` parameter to control how many results are returned per page. The maximum is **50** for every paginated endpoint; the per-endpoint default differs:
+
+| Endpoint | Default | Max |
+| --- | --- | --- |
+| `GET /v1/conversations` | 20 | 50 |
+| `GET /v1/deals` | 20 | 50 |
+| `GET /v1/accounts` | 20 | 50 |
+| `GET /v1/messages` | 50 | 50 |
+| `GET /v1/rows` | 50 | 50 |
+| `GET /v1/documents` | 50 | 50 |
+
+## Combining with filters
+
+Filters and pagination work together. Repeat the same filters and page size on **every** request in an iteration; cursors identify a position but do not contain the original filters.
+
+```bash
+# First page: external meetings after Jan 1
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" \
+  "https://api.sybill.ai/v1/conversations?type=EXTERNAL&startedAfter=2024-01-01T00:00:00Z&limit=20"
+
+# Second page: repeat the filters and pass the cursor
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" \
+  "https://api.sybill.ai/v1/conversations?type=EXTERNAL&startedAfter=2024-01-01T00:00:00Z&limit=20&cursor=eyJ..."
+```
+
+## Full iteration example
+
+```python
+import requests
+
+API_KEY = "sk_live_YOUR_KEY"
+BASE = "https://api.sybill.ai/v1/conversations"
+headers = {"Authorization": f"Bearer {API_KEY}"}
+base_params = {
+    "limit": 50,
+    "type": "EXTERNAL",
+    "startedAfter": "2024-01-01T00:00:00Z",
+}
+
+cursor = None
+all_conversations = []
+
+while True:
+    params = base_params.copy()
+    if cursor:
+        params["cursor"] = cursor
+
+    resp = requests.get(BASE, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+
+    all_conversations.extend(data["conversations"])
+
+    if not data["pagination"]["hasMore"]:
+        break
+    cursor = data["pagination"]["nextCursor"]
+
+print(f"Fetched {len(all_conversations)} conversations")
+```
+
+## Paginated endpoints
+
+These endpoints use cursor-based pagination:
+
+<Columns cols={2}>
+
+<Card title="List Conversations" href="/endpoints#conversations" icon="messages-square">
+`GET /v1/conversations`
+</Card>
+
+<Card title="List Deals" href="/endpoints#deals" icon="handshake">
+`GET /v1/deals`
+</Card>
+
+<Card title="List Accounts" href="/endpoints#accounts" icon="building-2">
+`GET /v1/accounts`
+</Card>
+
+<Card title="List Messages" href="/endpoints#messages" icon="mail">
+`GET /v1/messages`
+</Card>
+
+<Card title="List Rows" href="/endpoints#rows" icon="rows-3">
+`GET /v1/rows`
+</Card>
+
+<Card title="List Documents" href="/endpoints#documents" icon="file-text">
+`GET /v1/documents`
+</Card>
+
+</Columns>
+
+## Best practices
+
+- **Use the maximum `limit`** (50) when iterating through all results to minimize the number of API calls.
+- **Don't store cursors long-term.** They are meant for immediate sequential paging, not bookmarks.
+- **Respect rate limits.** Add a short delay between pages if you're fetching large data sets. See [Rate Limiting](/rate-limiting).
+- **Check `hasMore`**, not `nextCursor`, to determine if more pages exist.

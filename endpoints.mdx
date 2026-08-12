@@ -1,0 +1,1120 @@
+---
+title: "Endpoint guide"
+description: "Request conventions, filters, payloads, responses, and errors for every Sybill REST endpoint."
+icon: "route"
+---
+
+All endpoints require a valid API key. See [Authentication](/authentication) for details on creating and using API keys.
+
+<Info>
+
+**Common conventions**
+
+- Resource response bodies use **camelCase** field names. The health response and structured error details retain their documented `org_id` and `request_id` fields. Timestamps are ISO 8601 strings in UTC unless noted otherwise.
+- All query parameters use **camelCase** (e.g. `sourceId`, `remoteId`, `createdAfter`).
+- Each endpoint requires the **Export** (`read`), **Import** (`ingest`), or **Ask Sybill** (`ask_sybill`) permission (see [Authentication](/authentication#scopes) for the full mapping).
+- Request bodies for POST / PATCH endpoints are limited to **10 MB** and require a `Content-Length` header.
+- Records you push into Sybill are uniquely identified by `(sourceId, remoteId)` (where `remoteId` is the `id` you supplied at create time). The `sourceId` must reference a source you created via [`POST /v1/sources`](#post-v1sources).
+
+</Info>
+
+<Info>
+
+**Polymorphic `sourceId` on read endpoints**
+
+On `GET /v1/conversations`, `/v1/messages`, `/v1/rows`, and `/v1/documents`, the `sourceId` query parameter is **polymorphic** — it accepts either:
+
+- the **UUID** of a source you created via `POST /v1/sources`, **or**
+- a **reserved native string** identifying a built-in Sybill origin (e.g. `gong`, `gmail`, `salesforce_crm`, `chat_upload`, `mailbox_attachment`).
+
+The same `sourceId` value appears on every read response item so you can round-trip filters. The reserved native strings per resource are listed under each endpoint below.
+
+</Info>
+
+---
+
+## Health check
+
+### `GET /v1/health`
+
+Verify your API key is valid and inspect its scopes. Requires any valid API key.
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "org_id": "550e8400-e29b-41d4-a716-446655440000",
+  "scopes": ["read", "ingest"]
+}
+```
+
+---
+
+## Ask Sybill
+
+### `POST /v1/ask-sybill`
+
+Submit one question to Ask Sybill using organization-level data access.
+Requires the **Ask Sybill** permission (`ask_sybill` scope). Every request
+starts a new one-shot run; the request
+cannot continue a previous thread or select a human user's private context.
+
+The request waits for up to 60 seconds. If the run reaches a terminal state
+during that window, the API returns `200 OK` with the result envelope — check
+`status`: `completed` results carry `output`, while `failed` and `stopped`
+runs carry an optional `error`. Otherwise it returns `202 Accepted`, a running
+envelope, and a `Location` header to poll.
+
+**Request body:**
+
+```json
+{
+  "message": "Which deals are at risk this quarter?"
+}
+```
+
+**Completed response (`200 OK`):**
+
+```json
+{
+  "threadId": "550e8400-e29b-41d4-a716-446655440000",
+  "runId": "4f6d96dc-6fc0-41fb-a0cb-5810e4d33db8",
+  "status": "completed",
+  "output": "The deals currently at risk are...",
+  "generatedAt": 1784160000000
+}
+```
+
+**Still-running response (`202 Accepted`):**
+
+```http
+Location: /v1/ask-sybill/550e8400-e29b-41d4-a716-446655440000/4f6d96dc-6fc0-41fb-a0cb-5810e4d33db8
+Retry-After: 5
+```
+
+```json
+{
+  "threadId": "550e8400-e29b-41d4-a716-446655440000",
+  "runId": "4f6d96dc-6fc0-41fb-a0cb-5810e4d33db8",
+  "status": "running"
+}
+```
+
+### `GET /v1/ask-sybill/{threadId}/{runId}`
+
+Wait for the result of a previously submitted run. Requires the **Ask Sybill**
+permission (`ask_sybill` scope). Each request polls the run for up to 60
+seconds. A terminal result
+returns `200 OK`. If the run is still in progress after that window, the API
+returns `202 Accepted` with the running envelope, polling `Location`, and
+`Retry-After: 5`; wait for that interval and call the Location again.
+
+Runs are accessible for 30 days and only to API keys for the organization that
+created them. Unknown, expired, and cross-organization identifiers all return
+`404 Not Found`.
+
+Possible status values are `running`, `completed`, `failed`, and `stopped`.
+Completed results include `output` and `generatedAt`; failed results may include
+`error`.
+
+---
+
+## Conversations
+
+### `GET /v1/conversations`
+
+Returns a paginated list of organization-visible conversations. Private conversations owned by individual users are not returned. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | 20 | Number of results per page (1–50) |
+| `startedAfter` | string (ISO 8601) | — | Lower bound for meeting start time |
+| `startedBefore` | string (ISO 8601) | — | Upper bound for meeting start time |
+| `type` | string | — | Filter by meeting type: `INTERNAL` or `EXTERNAL` |
+| `title` | string | — | Filter by conversation title (case-insensitive partial match) |
+| `attendees` | string | — | Filter by participant: name fragment, full email, or company domain (`@acme.com`) |
+| `crmName` | string | — | Filter by associated CRM deal/account name (case-insensitive exact-phrase) |
+| `sourceId` | string | — | Filter by conversation origin. Accepts either a source UUID or a reserved native meeting-provider string: `sybill` (including Sybill desktop-notetaker recordings), `gong`, `chorus`, `fathom`, `grain`, `mindtickle`, `avoma`, `fireflies`, `zoho_meetings`, `uploaded_call`, `uploaded_transcript`, `zoom_phone`, `outreach_dialer`, `nooks_dialer`, `ringcentral_dialer`, `aircall_dialer`. |
+| `cursor` | string | — | Pagination cursor from a previous response |
+
+**Response:**
+
+```json
+{
+  "conversations": [
+    {
+      "conversationId": "550e8400-e29b-41d4-a716-446655440000",
+      "sourceId": "gong",
+      "title": "Q4 Pipeline Review",
+      "startTime": "2023-11-14T22:13:20Z",
+      "endTime": "2023-11-15T00:13:20Z",
+      "type": "EXTERNAL",
+      "participants": [
+        { "name": "Jane Smith", "email": "jane@example.com", "attended": true }
+      ],
+      "crm": { "id": "006...", "name": "Acme Deal", "type": "opportunity" }
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJzZWFyY2hBZnRlciI6...",
+    "hasMore": true
+  }
+}
+```
+
+See [Pagination](/pagination) for details on iterating through results.
+
+---
+
+### `GET /v1/conversations/{conversationId}`
+
+Returns the available details for a single organization-visible conversation, including transcript, recordings, and AI-generated summary when present. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `conversationId` | UUID | The conversation identifier |
+
+**Response:**
+
+```json
+{
+  "conversationId": "550e8400-e29b-41d4-a716-446655440000",
+  "sourceId": "gong",
+  "title": "Q4 Pipeline Review",
+  "startTime": "2023-11-14T22:13:20Z",
+  "endTime": "2023-11-15T00:13:20Z",
+  "type": "EXTERNAL",
+  "category": "prospect_negotiation",
+  "participants": [
+    { "name": "Jane Smith", "email": "jane@example.com", "attended": true }
+  ],
+  "crm": { "id": "006...", "name": "Acme Deal", "type": "opportunity" },
+  "recordings": {
+    "videoUrl": "https://recordings.example.com/meeting.mp4?...",
+    "audioUrl": "https://recordings.example.com/meeting.mp3?..."
+  },
+  "transcript": [
+    { "speaker": "Jane Smith", "text": "Let's review the pipeline numbers.", "startTime": 0.0, "endTime": 4.5 }
+  ],
+  "summary": {
+    "Outcome": "Deal moved to negotiation stage.",
+    "Pain Points": ["Integration complexity", "Timeline concerns"]
+  }
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `404 Not Found` | Conversation does not exist or is not accessible to your organization |
+
+---
+
+### `POST /v1/conversations`
+
+Push a conversation (transcript and/or recording) into Sybill. Requires the **Import** permission (`ingest` scope). Returns `201 Created`.
+
+The body must include a non-empty `transcript` array, a `recordingUrl`, or both. Provide a recording URL when you want Sybill to transcribe and enrich the audio/video; provide a transcript when you already have one.
+
+**Request body:** [`ConversationRequest`](/data-models#conversationrequest).
+
+```json
+{
+  "id": "external-conv-123",
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "displayName": "Acme onboarding call",
+  "createdAt": "2024-05-01T15:00:00Z",
+  "startedAt": "2024-05-01T15:00:00Z",
+  "endedAt": "2024-05-01T15:45:00Z",
+  "participants": [
+    { "email": "alice@acme.com", "name": "Alice Smith" },
+    { "email": "rep@sybill.ai", "name": "Sales Rep" }
+  ],
+  "recordingUrl": "https://example.com/recording.mp4",
+  "public": true,
+  "ownerEmails": ["rep@sybill.ai"]
+}
+```
+
+`201 Created` confirms that Sybill stored the record and accepted it for asynchronous processing. Transcription, enrichment, and other derived fields may not be available immediately.
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Validation error (e.g. missing transcript and recording URL, malformed timestamp, or invalid source) |
+| `409 Conflict` | Concurrent write of the same record |
+| `411 Length Required` | Missing `Content-Length` header |
+| `413 Payload Too Large` | Request body exceeds 10 MB |
+
+---
+
+### `DELETE /v1/conversations`
+
+Soft-delete a conversation you previously pushed via `POST /v1/conversations`. Requires the **Import** permission (`ingest` scope).
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `remoteId` | string | yes | Your external identifier (the `id` you supplied at create time) |
+| `sourceId` | UUID | yes | The source the record was created under |
+
+**Response:** [`DeletedRecordResponse`](/data-models#deletedrecordresponse).
+
+---
+
+## Deals
+
+### `GET /v1/deals`
+
+Returns a paginated list of CRM deals in your organization. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | 20 | Number of results per page (1–50) |
+| `name` | string | — | Filter by deal name (case-insensitive partial match) |
+| `stage` | string | — | Filter by pipeline stage name (case-insensitive partial match) |
+| `closed` | boolean | — | Filter by closed status (`true` for won/lost, `false` for open) |
+| `owner` | string | — | Filter by deal owner name (case-insensitive partial match) |
+| `closeDateAfter` | string (ISO 8601) | — | Lower bound for close date |
+| `closeDateBefore` | string (ISO 8601) | — | Upper bound for close date |
+| `amountMin` | number | — | Minimum deal amount |
+| `amountMax` | number | — | Maximum deal amount |
+| `lastActivityAfter` | string (ISO 8601) | — | Lower bound for last activity date |
+| `lastActivityBefore` | string (ISO 8601) | — | Upper bound for last activity date |
+| `cursor` | string | — | Pagination cursor from a previous response |
+
+**Response:**
+
+```json
+{
+  "deals": [
+    {
+      "dealId": "006ABC000000123456",
+      "name": "Acme Enterprise Deal",
+      "accountName": "Acme Corp",
+      "stage": "Negotiation",
+      "pipeline": "Sales Pipeline",
+      "amount": 50000.0,
+      "closeDate": "2024-03-15T00:00:00Z",
+      "closed": false,
+      "createdDate": "2023-09-01T10:30:00Z",
+      "lastActivityDate": "2024-01-10T15:30:00Z",
+      "owner": { "name": "Jane Doe", "email": "jane@example.com" }
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJ0cyI6MTcwMDAwMDAwMDAwMCwiaWQi...",
+    "hasMore": true
+  }
+}
+```
+
+---
+
+### `GET /v1/deals/{dealId}`
+
+Returns the available details for a single deal, including AI-generated summary, CRM autofill suggestions, and contacts when present. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `dealId` | string | The CRM remote identifier of the deal |
+
+**Response:**
+
+```json
+{
+  "dealId": "006ABC000000123456",
+  "name": "Acme Enterprise Deal",
+  "accountName": "Acme Corp",
+  "stage": "Negotiation",
+  "pipeline": "Sales Pipeline",
+  "amount": 50000.0,
+  "closeDate": "2024-03-15T00:00:00Z",
+  "closed": false,
+  "createdDate": "2023-09-01T10:30:00Z",
+  "lastActivityDate": "2024-01-10T15:30:00Z",
+  "owner": { "name": "Jane Doe", "email": "jane@example.com" },
+  "summary": {
+    "Current Status": "Deal is progressing well through negotiation.",
+    "Pain Points": ["Budget constraints", "Timeline pressure"]
+  },
+  "crmAutofill": {
+    "Next Steps": "Schedule follow-up call with legal team"
+  },
+  "contacts": [
+    { "name": "John Smith", "email": "john@acme.com", "title": "VP Sales", "phone": "+1234567890" }
+  ]
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `404 Not Found` | Deal does not exist or is not accessible to your organization |
+
+---
+
+## Accounts
+
+### `GET /v1/accounts`
+
+Returns a paginated list of CRM accounts in your organization. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | 20 | Number of results per page (1–50) |
+| `name` | string | — | Filter by account name (case-insensitive partial match) |
+| `website` | string | — | Filter by website URL (case-insensitive partial match) |
+| `owner` | string | — | Filter by owner name or email (case-insensitive partial match) |
+| `createdAfter` | string (ISO 8601) | — | Lower bound for created date |
+| `createdBefore` | string (ISO 8601) | — | Upper bound for created date |
+| `lastActivityAfter` | string (ISO 8601) | — | Lower bound for last activity date |
+| `lastActivityBefore` | string (ISO 8601) | — | Upper bound for last activity date |
+| `cursor` | string | — | Pagination cursor from a previous response |
+
+**Response:**
+
+```json
+{
+  "accounts": [
+    {
+      "accountId": "001ABC000000123456",
+      "name": "Acme Corp",
+      "website": "https://acme.com",
+      "owner": { "name": "Jane Doe", "email": "jane@example.com" },
+      "createdDate": "2023-09-01T10:30:00Z",
+      "lastActivityDate": "2024-01-10T15:30:00Z",
+      "latestDeal": {
+        "dealId": "006ABC000000789012",
+        "name": "Acme Enterprise Deal",
+        "stage": "Negotiation",
+        "amount": 50000.0,
+        "closeDate": "2024-03-15T00:00:00Z"
+      }
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJ0cyI6MTcwMDAwMDAwMDAwMCwiaWQi...",
+    "hasMore": true
+  }
+}
+```
+
+---
+
+### `GET /v1/accounts/{accountId}`
+
+Returns the available details for a single account, including contacts and synced CRM fields when present. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `accountId` | string | The CRM remote identifier of the account |
+
+**Response:**
+
+```json
+{
+  "accountId": "001ABC000000123456",
+  "name": "Acme Corp",
+  "website": "https://acme.com",
+  "owner": { "name": "Jane Doe", "email": "jane@example.com" },
+  "createdDate": "2023-09-01T10:30:00Z",
+  "lastActivityDate": "2024-01-10T15:30:00Z",
+  "latestDeal": {
+    "dealId": "006ABC000000789012",
+    "name": "Acme Enterprise Deal",
+    "stage": "Negotiation",
+    "amount": 50000.0,
+    "closeDate": "2024-03-15T00:00:00Z"
+  },
+  "contacts": [
+    { "name": "John Smith", "email": "john@acme.com", "title": "VP Sales", "phone": "+1234567890" }
+  ],
+  "syncedCrmFields": {
+    "Industry": "Technology",
+    "Annual Revenue": "$10M"
+  }
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `404 Not Found` | Account does not exist or is not accessible to your organization |
+
+---
+
+## Messages
+
+### `GET /v1/messages`
+
+Returns a paginated list of organization-visible messages. Private messages owned by individual users are not returned. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+The unified read API surfaces all message origins through one shape: native email/CRM integrations (Gmail, Outlook, Zoho Mail, Salesforce/HubSpot/Pipedrive/Dynamics/Zoho CRMs) **and** any messages you push via [`POST /v1/messages`](#post-v1messages).
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sourceId` | string | — | Filter by message origin (UUID of a source you created, or a native string: `gmail`, `outlook`, `zoho_mail`, `salesforce_crm`, `hubspot_crm`, `pipedrive_crm`, `dynamics_crm`, `zoho_crm`) |
+| `remoteId` | string | — | Filter by upstream message identifier (provider-assigned id) |
+| `threadId` | string | — | Filter to messages in a single thread |
+| `participantEmail` | string | — | Filter to messages where this email appears as sender or recipient |
+| `createdAfter` | string (ISO 8601) | — | Lower bound for source-system creation time |
+| `createdBefore` | string (ISO 8601) | — | Upper bound for source-system creation time |
+| `cursor` | string | — | Pagination cursor from a previous response |
+| `limit` | integer | 50 | Number of results per page (1–50) |
+
+**Response:**
+
+```json
+{
+  "messages": [
+    {
+      "messageId": "9b9f7c2c-2d8e-4a17-9d6e-1234567890ab",
+      "sourceId": "gmail",
+      "remoteId": "1812af3b9...",
+      "threadId": "thread-42",
+      "subject": "Re: Demo follow-up questions",
+      "sender": { "name": "Alice Smith", "email": "alice@acme.com" },
+      "recipients": [
+        { "name": "Sales Rep", "email": "rep@sybill.ai" }
+      ],
+      "bodyPreview": "Thanks for the demo yesterday — a few follow-up questions...",
+      "createdAt": "2024-05-01T15:00:00Z"
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJ0cyI6MTcxNzAwMDAwMDAwMCwiaWQi...",
+    "hasMore": true
+  }
+}
+```
+
+---
+
+### `GET /v1/messages/{messageId}`
+
+Returns the available details for a single organization-visible message, including its body and attachment metadata. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `messageId` | UUID | Sybill message identifier |
+
+**Response:**
+
+```json
+{
+  "messageId": "9b9f7c2c-2d8e-4a17-9d6e-1234567890ab",
+  "sourceId": "gmail",
+  "remoteId": "1812af3b9...",
+  "threadId": "thread-42",
+  "subject": "Re: Demo follow-up questions",
+  "sender": { "name": "Alice Smith", "email": "alice@acme.com" },
+  "recipients": [
+    { "name": "Sales Rep", "email": "rep@sybill.ai" }
+  ],
+  "bodyPreview": "Thanks for the demo yesterday — a few follow-up questions...",
+  "createdAt": "2024-05-01T15:00:00Z",
+  "body": "Thanks for the demo yesterday. We're moving forward with...",
+  "attachments": [
+    {
+      "id": "0a3e2c8a-5d51-4d2f-8d6c-9be0b9f3e2d4",
+      "filename": "questions.pdf",
+      "contentType": "application/pdf",
+      "size": 12345
+    }
+  ]
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Message source is not supported by this endpoint |
+| `404 Not Found` | Message does not exist or is not accessible to your organization |
+
+---
+
+### `POST /v1/messages`
+
+Push a message into Sybill. Requires the **Import** permission (`ingest` scope). Returns `201 Created`.
+
+**Request body:** [`MessageRequest`](/data-models#messagerequest).
+
+```json
+{
+  "id": "msg-9001",
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "displayName": "Re: Pricing question",
+  "createdAt": "2024-05-01T15:00:00Z",
+  "body": "Hi Alice, here is the updated pricing sheet...",
+  "sender": { "email": "rep@sybill.ai", "name": "Sales Rep" },
+  "recipients": [
+    { "email": "alice@acme.com", "name": "Alice Smith" }
+  ],
+  "attachments": [
+    { "name": "pricing.pdf", "url": "https://example.com/pricing.pdf", "mimeType": "application/pdf" }
+  ],
+  "threadId": "thread-42",
+  "public": true
+}
+```
+
+`201 Created` confirms that Sybill stored the record and accepted it for asynchronous processing. Derived data may not be available immediately.
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+**Errors:** Same as [`POST /v1/conversations`](#post-v1conversations).
+
+---
+
+### `DELETE /v1/messages`
+
+Soft-delete a message you previously pushed via `POST /v1/messages`. Requires the **Import** permission (`ingest` scope).
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `remoteId` | string | yes | Your external identifier (the `id` you supplied at create time) |
+| `sourceId` | UUID | yes | The source the record was created under |
+
+**Response:** [`DeletedRecordResponse`](/data-models#deletedrecordresponse).
+
+---
+
+## Rows
+
+Rows are structured records keyed by an [object type](#object-types). Use them to store CRM-like custom data (tickets, leads, forms) that is neither a conversation nor a message.
+
+### `GET /v1/rows`
+
+Returns a paginated list of organization-visible rows. Private rows owned by individual users are not returned. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sourceId` | string | — | UUID of a source you created. (Rows have no native origins; only UUID values are accepted.) |
+| `objectTypeId` | UUID | — | Filter to rows of a single object type |
+| `remoteId` | string | — | Filter by the `id` you supplied at create time |
+| `name` | string (≤1000) | — | Filter by row `name` (case-insensitive partial match) |
+| `createdAfter` | string (ISO 8601) | — | Lower bound for source-system creation time |
+| `createdBefore` | string (ISO 8601) | — | Upper bound for source-system creation time |
+| `cursor` | string | — | Pagination cursor from a previous response |
+| `limit` | integer | 50 | Number of results per page (1–50) |
+
+**Response:**
+
+```json
+{
+  "rows": [
+    {
+      "rowId": "9b9f7c2c-2d8e-4a17-9d6e-1234567890ab",
+      "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "objectTypeId": "0a3e2c8a-5d51-4d2f-8d6c-9be0b9f3e2d4",
+      "objectTypeName": "support_ticket",
+      "remoteId": "TKT-1234",
+      "name": "Login bug — Acme",
+      "fields": {
+        "priority": { "value": "high", "fieldType": "string", "label": "Priority" },
+        "openedAt": { "value": "2024-05-01T15:00:00Z", "fieldType": "datetime" }
+      },
+      "createdAt": "2024-05-01T15:00:00Z",
+      "updatedAt": null
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJ0cyI6MTcxNzAwMDAwMDAwMCwiaWQi...",
+    "hasMore": true
+  }
+}
+```
+
+---
+
+### `GET /v1/rows/{rowId}`
+
+Returns a single row by its Sybill identifier. The shape is identical to a list item — rows are simple enough that detail and list views match. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `rowId` | UUID | Sybill row identifier |
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `404 Not Found` | Row does not exist or is not accessible to your organization |
+
+---
+
+### `POST /v1/rows`
+
+Create a row. Requires the **Import** permission (`ingest` scope). The `objectTypeId` must already exist (create one via [`POST /v1/object-types`](#post-v1object-types)). Each `fields` value carries an explicit `fieldType` that must match the object type's schema.
+
+**Request body:** [`RowRequest`](/data-models#rowrequest).
+
+```json
+{
+  "id": "TKT-1234",
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "objectTypeId": "0a3e2c8a-5d51-4d2f-8d6c-9be0b9f3e2d4",
+  "name": "TKT-1234",
+  "fields": {
+    "priority": { "value": "high", "fieldType": "string", "label": "Priority" },
+    "openedAt": { "value": "2024-05-01T15:00:00Z", "fieldType": "datetime" },
+    "score":    { "value": 87, "fieldType": "int" }
+  },
+  "public": true
+}
+```
+
+`201 Created` confirms that Sybill stored the row and accepted it for asynchronous processing. Derived data may not be available immediately.
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+---
+
+### `PATCH /v1/rows`
+
+Apply a partial update to an existing row. Requires the **Import** permission (`ingest` scope).
+
+The `fields` map merges per RFC 7396: keys present overwrite existing values, keys absent are preserved, and an explicit `null` value deletes that key from the row. Top-level fields (`name`, `public`, `ownerEmails`, `updatedAt`) are not nullable — passing `null` is silently ignored.
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `remoteId` | string | yes | Your external identifier |
+| `sourceId` | UUID | yes | The source the record was created under |
+
+**Request body:** [`UpdateRowRequest`](/data-models#updaterowrequest).
+
+```json
+{
+  "name": "Login bug — Acme (escalated)",
+  "fields": {
+    "priority": { "value": "urgent", "fieldType": "string" },
+    "score":    null
+  }
+}
+```
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Validation error (unknown field, type mismatch, deleting a required field) |
+| `403 Forbidden` | Source or row belongs to another organization |
+| `404 Not Found` | Row not found for `(sourceId, remoteId)` |
+
+---
+
+### `DELETE /v1/rows`
+
+Soft-delete a row. Requires the **Import** permission (`ingest` scope).
+
+**Query parameters:** Same as `PATCH /v1/rows`.
+
+**Response:** [`DeletedRecordResponse`](/data-models#deletedrecordresponse).
+
+---
+
+## Documents
+
+Documents are arbitrary text-bearing artifacts (PDFs, plain-text notes, web pages, etc.) you push into Sybill, plus documents created from native chat uploads and mailbox email attachments.
+
+### `GET /v1/documents`
+
+Returns a paginated list of organization-visible documents. Private documents owned by individual users are not returned. Requires the **Export** permission (`read` scope). Cursor-paginated.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sourceId` | string | — | Filter by document origin (UUID of a source you created, `chat_upload`, or `mailbox_attachment` for email attachments) |
+| `name` | string (≤255) | — | Case-insensitive partial match on `displayName` |
+| `cursor` | string | — | Pagination cursor from a previous response |
+| `limit` | integer | 50 | Number of results per page (1–50) |
+
+**Response:**
+
+```json
+{
+  "documents": [
+    {
+      "id": "9b9f7c2c-2d8e-4a17-9d6e-1234567890ab",
+      "displayName": "Acme onboarding plan",
+      "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "remoteId": "doc-42",
+      "url": "https://example.com/doc.pdf",
+      "contentType": "application/pdf",
+      "createdAt": "2024-05-01T15:00:00Z",
+      "updatedAt": "2024-05-02T10:00:00Z"
+    }
+  ],
+  "pagination": {
+    "nextCursor": "eyJ0cyI6MTcxNzAwMDAwMDAwMCwiaWQi...",
+    "hasMore": true
+  }
+}
+```
+
+---
+
+### `GET /v1/documents/{documentId}`
+
+Returns the available details for a single organization-visible document. Requires the **Export** permission (`read` scope).
+
+**Path parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `documentId` | UUID | Sybill document identifier |
+
+**Response:**
+
+```json
+{
+  "id": "9b9f7c2c-2d8e-4a17-9d6e-1234567890ab",
+  "displayName": "Acme onboarding plan",
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "remoteId": "doc-42",
+  "url": "https://example.com/doc.pdf",
+  "contentType": "application/pdf",
+  "createdAt": "2024-05-01T15:00:00Z",
+  "updatedAt": "2024-05-02T10:00:00Z"
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Document source is not supported by this endpoint |
+| `404 Not Found` | Document does not exist or is not accessible to your organization |
+
+---
+
+### `POST /v1/documents`
+
+Create a document. Requires the **Import** permission (`ingest` scope). Returns `201 Created`.
+
+Provide **exactly one** of:
+
+- `url` — Sybill fetches the document from this URL.
+- `content` — base64-encoded document bytes embedded in the request.
+
+`displayName` is optional. When omitted, Sybill uses `filename` if present, otherwise the URL path filename for URL documents. Content uploads must include either `displayName` or `filename`.
+
+**Request body:** [`DocumentRequest`](/data-models#documentrequest).
+
+```json
+{
+  "id": "doc-42",
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "displayName": "Acme onboarding plan",
+  "url": "https://example.com/doc.pdf",
+  "contentType": "application/pdf",
+  "author": { "email": "rep@sybill.ai", "name": "Sales Rep" },
+  "public": true
+}
+```
+
+`201 Created` confirms that Sybill stored the document and accepted it for asynchronous processing. Search and AI features may not include the document until processing completes.
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+---
+
+### `PATCH /v1/documents`
+
+Apply a partial update to an existing document. Requires the **Import** permission (`ingest` scope).
+
+You may pass at most one of `url` / `content`. Supplying either creates a new version and reprocesses the document. A PATCH with neither performs a metadata-only update (e.g. rename, change owners). `author` is intentionally not updatable — delete and recreate if you need to change it.
+
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `remoteId` | string | yes | Your external identifier |
+| `sourceId` | UUID | yes | The source the record was created under |
+
+**Request body:** [`UpdateDocumentRequest`](/data-models#updatedocumentrequest).
+
+```json
+{
+  "displayName": "Acme onboarding plan (v2)",
+  "url": "https://example.com/doc-v2.pdf"
+}
+```
+
+**Response:** [`RecordResponse`](/data-models#recordresponse).
+
+---
+
+### `DELETE /v1/documents`
+
+Soft-delete a document. Requires the **Import** permission (`ingest` scope).
+
+**Query parameters:** Same as `PATCH /v1/documents`.
+
+**Response:** [`DeletedRecordResponse`](/data-models#deletedrecordresponse).
+
+---
+
+## Sources
+
+A source is a logical channel that records you push into Sybill belong to (e.g. "Zendesk", "Sales Notes", "Internal Wiki"). All `POST` / `PATCH` / `DELETE` endpoints on `/v1/conversations`, `/v1/messages`, `/v1/rows`, and `/v1/documents` require a `sourceId` referring to a source you own. Read endpoints additionally accept reserved native source strings — see each endpoint above for the catalog.
+
+### `POST /v1/sources`
+
+Create a new source. Requires the **Import** permission (`ingest` scope). The `name` is a stable machine identifier and must be unique within your organization; `displayName` is shown in the Sybill UI.
+
+**Request body:** [`CreateSourceRequest`](/data-models#createsourcerequest).
+
+```json
+{ "name": "internal-wiki", "displayName": "Internal Wiki" }
+```
+
+**Response:** [`SourceResponse`](/data-models#sourceresponse).
+
+```json
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "name": "internal-wiki",
+  "displayName": "Internal Wiki",
+  "createdAt": "2024-05-01T15:00:00Z",
+  "updatedAt": "2024-05-01T15:00:00Z"
+}
+```
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Validation error |
+| `409 Conflict` | A source with the same `name` already exists in your organization |
+
+---
+
+### `GET /v1/sources`
+
+List sources in your organization. Requires the **Export** permission (`read` scope).
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | string (≤255) | Optional case-insensitive partial match on source `name` |
+
+**Response:**
+
+```json
+{
+  "sources": [
+    {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "name": "internal-wiki",
+      "displayName": "Internal Wiki",
+      "createdAt": "2024-05-01T15:00:00Z",
+      "updatedAt": "2024-05-01T15:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /v1/sources/{sourceId}`
+
+Fetch a single source. Requires the **Export** permission (`read` scope).
+
+**Response:** [`SourceResponse`](/data-models#sourceresponse).
+
+---
+
+### `PATCH /v1/sources/{sourceId}`
+
+Rename a source. Requires the **Import** permission (`ingest` scope). Only `displayName` can be changed; `name` is immutable.
+
+**Request body:** [`UpdateSourceRequest`](/data-models#updatesourcerequest).
+
+```json
+{ "displayName": "Internal Wiki (Confluence)" }
+```
+
+**Response:** [`SourceResponse`](/data-models#sourceresponse).
+
+---
+
+### `DELETE /v1/sources/{sourceId}`
+
+Delete a source. Requires the **Import** permission (`ingest` scope). This prevents future imports from using the source but does not delete records or object types previously created under it.
+
+**Response:**
+
+```json
+{ "status": "deleted", "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
+```
+
+---
+
+## Object types
+
+An object type defines the shape of [`/v1/rows`](#rows) records. It declares a name, a display name, and a list of typed field definitions.
+
+### `POST /v1/object-types`
+
+Create an object type within a source. Requires the **Import** permission (`ingest` scope).
+
+**Request body:** [`CreateObjectTypeRequest`](/data-models#createobjecttyperequest).
+
+```json
+{
+  "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "name": "support_ticket",
+  "displayName": "Support Ticket",
+  "fieldDefinitions": [
+    { "name": "priority", "fieldType": "string", "label": "Priority", "required": true },
+    { "name": "openedAt", "fieldType": "datetime", "label": "Opened at" },
+    { "name": "score", "fieldType": "int" }
+  ]
+}
+```
+
+`fieldType` must be one of the values listed under [`FieldTypes`](/data-models#fieldtypes).
+
+**Response:** [`ObjectTypeResponse`](/data-models#objecttyperesponse).
+
+**Errors:**
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Validation error (e.g. duplicate field names) |
+| `409 Conflict` | An object type with the same `name` already exists under the source |
+
+---
+
+### `GET /v1/object-types`
+
+List object types in your organization. Requires the **Export** permission (`read` scope).
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `sourceId` | UUID | Optional — restrict results to a single source |
+
+**Response:**
+
+```json
+{
+  "objectTypes": [
+    {
+      "id": "0a3e2c8a-5d51-4d2f-8d6c-9be0b9f3e2d4",
+      "sourceId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "name": "support_ticket",
+      "displayName": "Support Ticket",
+      "fieldDefinitions": [
+        { "name": "priority", "fieldType": "string", "label": "Priority", "required": true }
+      ],
+      "createdAt": "2024-05-01T15:00:00Z",
+      "updatedAt": "2024-05-01T15:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /v1/object-types/{objectTypeId}`
+
+Fetch a single object type. Requires the **Export** permission (`read` scope).
+
+**Response:** [`ObjectTypeResponse`](/data-models#objecttyperesponse).
+
+---
+
+### `PATCH /v1/object-types/{objectTypeId}`
+
+Update an object type. Requires the **Import** permission (`ingest` scope). Both `displayName` and `fieldDefinitions` are optional; supplying `fieldDefinitions` replaces the full schema.
+
+**Request body:** [`UpdateObjectTypeRequest`](/data-models#updateobjecttyperequest).
+
+**Response:** [`ObjectTypeResponse`](/data-models#objecttyperesponse).
+
+---
+
+### `DELETE /v1/object-types/{objectTypeId}`
+
+Delete an object type. Requires the **Import** permission (`ingest` scope). Existing rows remain readable, but new rows and updates can no longer use the deleted object type.
+
+**Response:**
+
+```json
+{ "status": "deleted", "id": "0a3e2c8a-5d51-4d2f-8d6c-9be0b9f3e2d4" }
+```
+
+---
+
+## Common error responses
+
+All endpoints may return these errors:
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Malformed request, validation error, or invalid query parameter |
+| `401 Unauthorized` | API key is invalid or revoked |
+| `403 Forbidden` | Authorization header is missing or the API key lacks the required scope |
+| `404 Not Found` | Resource does not exist or is not accessible to your organization |
+| `409 Conflict` | Concurrent or duplicate write |
+| `411 Length Required` | A `POST` / `PATCH` endpoint received a request without a `Content-Length` header |
+| `413 Payload Too Large` | A `POST` / `PATCH` endpoint received a request body larger than 10 MB |
+| `422 Unprocessable Entity` | Request validation failed |
+| `429 Too Many Requests` | Rate limit exceeded (see [Rate Limiting](/rate-limiting)) |
+| `500 Internal Server Error` | Unexpected server error |
+
+`POST` / `PATCH` / `DELETE` endpoints return errors with a structured body:
+
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "exactly one of url or content must be provided",
+    "field": null,
+    "request_id": "01HV..."
+  }
+}
+```
+
+`GET` endpoints generally return errors as `{ "detail": "<message>" }`.

@@ -1,55 +1,44 @@
-# Mintlify Starter Kit
+# Sybill API documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+This repository hosts the Sybill public API documentation on Mintlify.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+- Preview site: [sybill.mintlify.site](https://sybill.mintlify.site)
+- Production API: [api.sybill.ai](https://api.sybill.ai)
+- API key management: [Sybill dashboard](https://app.sybill.ai/settings/integrations/api-keys)
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+## Local development
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
-
-## AI-assisted writing
-
-Set up your AI coding tool to work with Mintlify:
+Use an LTS release of Node.js, then install the Mintlify CLI:
 
 ```bash
-npx skills add https://mintlify.com/docs
-```
-
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
+npm install --global mint
 mint dev
 ```
 
-View your local preview at `http://localhost:3000`.
+The preview runs at `http://localhost:3000`.
 
-## Publishing changes
+## Validation
 
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
+Run these checks before publishing:
 
-## Need help?
+```bash
+mint openapi-check openapi.yaml
+mint broken-links
+mint validate
+```
 
-### Troubleshooting
+## Updating the API reference
 
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
+The API implementation and OpenAPI generator live in the `flamingo-fer` repository. Regenerate the specification there:
 
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+```bash
+cd /path/to/flamingo-fer
+set -a && source .env && set +a
+source .venv/bin/activate
+cd src
+python -m scripts.script_generate_public_api_openapi
+```
+
+Copy the generated file from `src/sybill_py/runtimes/public_api_server/docs/content/openapi.yaml` into this repository as `openapi.yaml`. Update the relevant MDX guides when behavior or data models change.
+
+Mintlify deploys changes automatically after they are merged into `main`.

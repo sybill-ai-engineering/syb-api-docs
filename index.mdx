@@ -1,20 +1,86 @@
 ---
 title: "Introduction"
-description: "Welcome to your project"
+description: "Programmatic access to your Sybill workspace through REST and MCP."
+icon: "house"
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+The Sybill API provides programmatic access to your Sybill workspace — conversations, insights, and AI-powered analysis — via standard REST endpoints and an MCP interface for AI assistants.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<Warning>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
+**Alpha Notice**
+
+The Sybill API is currently in alpha. Endpoints, request/response schemas, rate limits, and behavior may change at any time without prior notice. We recommend against building production-critical integrations until the API reaches a stable release.
+
+</Warning>
+
+## Base URL
+
+```text
+https://api.sybill.ai
+```
+
+## Quick start
+
+1. [Create an API key](https://app.sybill.ai/settings/integrations/api-keys) from the Sybill dashboard (**Settings → Integrations → API Keys**).
+2. Make your first request:
+
+```bash
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" \
+  https://api.sybill.ai/v1/health
+```
+
+A successful response looks like:
+
+```json
+{
+  "status": "ok",
+  "org_id": "your-org-id",
+  "scopes": ["read"]
+}
+```
+
+## Available interfaces
+
+| Interface | URL | Description |
+| --- | --- | --- |
+| REST API | `https://api.sybill.ai` | Read organization-visible conversations, deals, accounts, messages, rows, and documents, and import your own records via standard HTTP |
+| MCP | `https://mcp.sybill.ai/mcp` | Model Context Protocol server for AI assistants (Claude, Cursor, etc.) |
+
+## Data visibility and processing
+
+REST API keys operate with organization-level context rather than as a specific Sybill user. Read endpoints return records that are visible to the organization; they do not return private records owned by individual users. The MCP server uses the signed-in user's Sybill access.
+
+Records imported through `POST` endpoints are private by default and require at least one valid `ownerEmails` entry. Set `public: true` when the record should be visible through REST read endpoints.
+
+An import response confirms that Sybill stored the record and accepted it for asynchronous processing. Transcription, document conversion, summaries, and other derived fields may not be available immediately.
+
+## Next steps
+
+<Columns cols={3}>
+
+<Card title="Authentication" href="/authentication" icon="key-round">
+Learn how API keys and scopes work.
 </Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
+
+<Card title="Endpoints" href="/endpoints" icon="zap">
+Explore available REST API endpoints.
 </Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
+
+<Card title="Data Models" href="/data-models" icon="braces">
+Browse request and response schemas.
 </Card>
+
+<Card title="Pagination" href="/pagination" icon="list-end">
+Iterate through paginated result sets.
+</Card>
+
+<Card title="MCP Server" href="/mcp" icon="bot">
+Connect AI assistants via the MCP protocol.
+</Card>
+
+<Card title="OpenAPI Spec" href="/openapi.yaml" icon="file-text">
+Download the machine-readable API specification.
+</Card>
+
+</Columns>

@@ -1,0 +1,215 @@
+---
+title: "MCP server"
+description: "Connect AI assistants to Sybill through the Model Context Protocol."
+icon: "bot"
+---
+
+Sybill provides an [MCP](https://modelcontextprotocol.io/) server that allows AI assistants to interact with your Sybill data using natural language.
+
+## Server URL
+
+```text
+https://mcp.sybill.ai/mcp
+```
+
+| Property | Value |
+| --- | --- |
+| **Transport** | Streamable HTTP |
+| **Auth** | OAuth — your MCP client will prompt you to sign in with your Sybill account |
+
+## Available tools
+
+<Info>
+
+**Tool overview**
+
+The MCP server exposes the following tools. Each tool can be invoked by any compatible MCP client such as Claude Desktop, Cursor, or VS Code Copilot.
+
+</Info>
+
+---
+
+### `ask_sybill`
+
+Ask Sybill AI about your sales calls, deals, people, companies, emails, and more.
+
+`ask_sybill` returns one of two response shapes:
+
+- **Plain text** containing the final answer, when Sybill can produce one quickly. This is the most common case for short questions.
+- **JSON envelope** with `threadId`, `runId`, and `status: "running"` for longer-running questions. Pass the returned `threadId` and `runId` to [`get_ask_sybill_result`](#get_ask_sybill_result) to retrieve the final answer once it is ready.
+
+Clients should handle both shapes — try to parse the response as JSON; if it parses and contains `status: "running"`, switch to polling; otherwise treat it as the final answer.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `message` | string | yes | The question to ask Sybill |
+
+**Returns:** Either the AI-generated response as plain text (fast completions) or a JSON object with `threadId`, `runId`, `status: "running"` for runs that need more time. Pass those identifiers to [`get_ask_sybill_result`](#get_ask_sybill_result) to retrieve the answer once it is ready.
+
+**Example questions:**
+
+- "What were the key action items from my last call with Acme Corp?"
+- "Summarize the pain points mentioned across calls I can access this week."
+- "What deals are at risk in our pipeline?"
+
+---
+
+### `get_ask_sybill_result`
+
+Fetch the status and (if available) the final answer for a previously submitted `ask_sybill` run. Use this when `ask_sybill` returned a JSON envelope with `status: "running"`; poll it until `status` becomes terminal.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `thread_id` | string | yes | The `threadId` returned by `ask_sybill` when the run was submitted |
+| `run_id` | string | yes | The `runId` returned by `ask_sybill` when the run was submitted |
+
+**Returns:** A JSON object with the following shape:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `threadId` | string | Same id you passed in |
+| `runId` | string | Same id you passed in |
+| `status` | string | One of `running`, `completed`, `failed`, `stopped` |
+| `output` | string | The answer (only set when `status == "completed"`) |
+| `generatedAt` | integer | Unix milliseconds the answer was produced (only set when `status == "completed"`) |
+| `error` | string | Optional error or instruction text (e.g. set on failure or to remind the caller to keep polling) |
+
+---
+
+### `list_conversations`
+
+List sales conversations and meetings available to the signed-in user. Supports filtering by date range, meeting type, title, attendees, and CRM deal name. Returns paginated results; repeat the same filters and pass the returned cursor to fetch the next page.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | 20 | Maximum number of results per page (1-50) |
+| `started_after` | string | — | Lower bound for meeting start time (ISO 8601) |
+| `started_before` | string | — | Upper bound for meeting start time (ISO 8601) |
+| `meeting_type` | string | — | Filter by meeting type (e.g. EXTERNAL, INTERNAL) |
+| `title` | string | — | Filter by meeting title (case-insensitive partial match) |
+| `attendees` | string | — | Filter by an attendee. Accepts a participant name fragment (`John`, case-insensitive partial match), a full participant email (`alice@acme.com`, exact match), or a participant company domain (`@acme.com` or `acme.com`, exact match against the email domain) |
+| `crm_name` | string | — | Filter by associated CRM deal or account name (case-insensitive exact-phrase match). Multi-word queries match the full phrase, not individual tokens. |
+| `source_id` | string | — | Filter by conversation origin. Accepts a reserved native meeting-provider string (e.g. `sybill`—including Sybill desktop-notetaker recordings—`gong`, `chorus`, `fathom`, `grain`, `mindtickle`, `avoma`, `fireflies`, `zoho_meetings`, `uploaded_call`, `uploaded_transcript`, `zoom_phone`, `outreach_dialer`, `nooks_dialer`, `ringcentral_dialer`, `aircall_dialer`). |
+| `cursor` | string | — | Opaque pagination cursor from a previous response |
+
+**Returns:** A JSON object with a `conversations` array and `pagination` info.
+
+---
+
+### `get_conversation`
+
+Get the available details of a single conversation or meeting, including summary, transcript, recording URLs, participants, and CRM info when present.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `conversation_id` | string | yes | The unique identifier of the conversation |
+
+**Returns:** A JSON object with the full conversation detail.
+
+---
+
+### `list_deals`
+
+List CRM deals available to the signed-in user. Supports filtering by name, stage, closed status, owner, close date range, amount range, and last activity date range. Returns paginated results; repeat the same filters and pass the returned cursor to fetch the next page.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | — | Filter deals by name (case-insensitive partial match) |
+| `stage` | string | — | Filter by pipeline stage name |
+| `closed` | boolean | — | Filter by closed status: true for won/lost deals, false for open |
+| `owner` | string | — | Filter by deal owner name (case-insensitive partial match) |
+| `close_date_before` | string | — | Upper bound for close date (ISO 8601, e.g. 2025-06-30T00:00:00Z) |
+| `close_date_after` | string | — | Lower bound for close date (ISO 8601) |
+| `amount_min` | number | — | Minimum deal amount |
+| `amount_max` | number | — | Maximum deal amount |
+| `last_activity_before` | string | — | Upper bound for last activity date (ISO 8601) |
+| `last_activity_after` | string | — | Lower bound for last activity date (ISO 8601) |
+| `limit` | integer | 20 | Maximum number of results per page (1-50) |
+| `cursor` | string | — | Opaque pagination cursor from a previous response |
+
+**Returns:** A JSON object with a `deals` array and `pagination` info.
+
+---
+
+### `get_deal`
+
+Get the available details of a single CRM deal, including summary, contacts, owner, pipeline, and stage information when present.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `deal_id` | string | yes | The CRM remote identifier of the deal |
+
+**Returns:** A JSON object with the full deal detail.
+
+### `list_accounts`
+
+List CRM accounts available to the signed-in user. Supports filtering by name, website, owner, created date range, and last activity date range. Returns paginated results; repeat the same filters and pass the returned cursor to fetch the next page.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | — | Filter accounts by name (case-insensitive partial match) |
+| `website` | string | — | Filter by website URL (case-insensitive partial match) |
+| `owner` | string | — | Filter by owner name or email (case-insensitive partial match) |
+| `created_before` | string | — | Upper bound for created date (ISO 8601, e.g. 2025-06-30T00:00:00Z) |
+| `created_after` | string | — | Lower bound for created date (ISO 8601) |
+| `last_activity_before` | string | — | Upper bound for last activity date (ISO 8601) |
+| `last_activity_after` | string | — | Lower bound for last activity date (ISO 8601) |
+| `limit` | integer | 20 | Maximum number of results per page (1-50) |
+| `cursor` | string | — | Opaque pagination cursor from a previous response |
+
+**Returns:** A JSON object with an `accounts` array and `pagination` info.
+
+---
+
+### `get_account`
+
+Get the available details of a single CRM account, including contacts, owner, synced CRM fields, and latest deal information when present.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `account_id` | string | yes | The CRM identifier of the account |
+
+**Returns:** A JSON object with the full account detail.
+
+---
+
+## Client configuration
+
+### Claude Desktop
+
+Add the following to your Claude Desktop configuration file (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "sybill": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.sybill.ai/mcp"
+      ]
+    }
+  }
+}
+```
+
+<Tip>
+
+**First-time setup**
+
+When you first use the Sybill MCP server, Claude Desktop will open a browser window for you to sign in with your Sybill account.
+
+</Tip>
+
+## Rate limiting
+
+MCP usage limits are managed separately from REST API key rate limits and may depend on your Sybill plan.
+
+## Error handling
+
+| Status | Cause |
+| --- | --- |
+| `401 Unauthorized` | Authentication failed or session expired |
+| `429 Too Many Requests` | Rate limit exceeded |
+| `500 Internal Server Error` | Internal processing error |
