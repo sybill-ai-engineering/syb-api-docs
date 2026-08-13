@@ -5,3 +5,10 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Agent configuration and lock files
+AGENTS.md
+.agents/
+skills-lock.json
+README.md
+LICENSE

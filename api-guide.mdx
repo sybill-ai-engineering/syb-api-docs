@@ -1,0 +1,171 @@
+---
+title: "API guide"
+description: "Shared conventions, workflows, visibility rules, and errors for the Sybill REST API."
+icon: "route"
+---
+
+Use this guide for behavior shared across the REST API. For parameters, request bodies, response schemas, and endpoint-specific behavior, use the [API reference](/api-reference/health-check).
+
+## Choose a workflow
+
+<Columns cols={2}>
+
+<Card title="Export workspace data" href="/api-reference/list-conversations" icon="download">
+List organization-visible conversations, deals, accounts, messages, rows, and documents.
+</Card>
+
+<Card title="Ask Sybill" href="/api-reference/ask-sybill" icon="sparkles">
+Ask a question using your organization's Sybill data and poll longer-running requests.
+</Card>
+
+<Card title="Import records" href="/api-reference/import-conversation" icon="upload">
+Import conversations, messages, rows, and documents for Sybill to process.
+</Card>
+
+<Card title="Define custom data" href="/api-reference/create-source" icon="database">
+Create sources and object types before importing custom rows or documents.
+</Card>
+
+</Columns>
+
+## Request conventions
+
+- Send your API key as `Authorization: Bearer sk_live_YOUR_KEY`. See [Authentication](/authentication).
+- Query parameters and resource fields use camelCase, such as `sourceId`, `remoteId`, and `createdAfter`.
+- The health response and structured error details retain the documented `org_id` and `request_id` fields.
+- Timestamps are ISO 8601 strings in UTC unless the endpoint schema says otherwise. Timestamp fields in import requests also accept Unix seconds and Unix milliseconds.
+- `POST` and `PATCH` request bodies require a `Content-Length` header and may not exceed 10 MB.
+- The API reference shows each endpoint's required permission, parameters, body schema, responses, and executable examples.
+
+## Permissions
+
+Each endpoint requires one customer-facing permission, represented by an API scope:
+
+| Workflow | Permission | API scope | Methods |
+| --- | --- | --- | --- |
+| Read organization-visible data | **Export** | `read` | `GET` |
+| Import and manage records | **Import** | `ingest` | `POST`, `PATCH`, `DELETE` |
+| Submit and retrieve AI answers | **Ask Sybill** | `ask_sybill` | Ask Sybill endpoints |
+
+An API key may contain more than one scope. See the complete mapping in [Authentication](/authentication#scopes).
+
+## Sources and record identity
+
+A source is a logical channel for records you import, such as a support system, internal wiki, or notes database. Create a source before importing conversations, messages, rows, or documents.
+
+<Columns cols={2}>
+
+<Card title="Create a source" href="/api-reference/create-source" icon="database">
+Create a stable source and use its UUID as `sourceId` in import requests.
+</Card>
+
+<Card title="Create an object type" href="/api-reference/create-object-type" icon="table-properties">
+Define typed fields before importing custom rows.
+</Card>
+
+</Columns>
+
+Sybill identifies an imported record by the pair `(sourceId, remoteId)`. The `remoteId` is the `id` you supplied when you created the record. Use the same pair when you update or delete it.
+
+### Native and custom sources
+
+Import requests require the UUID of a source created by your organization. Read endpoints may also accept a reserved string for records produced by a native Sybill integration.
+
+| Resource | Accepted `sourceId` values when reading |
+| --- | --- |
+| Conversations | Custom source UUID or a supported meeting-provider identifier |
+| Messages | Custom source UUID or a supported email/CRM identifier |
+| Documents | Custom source UUID, `chat_upload`, or `mailbox_attachment` |
+| Rows | Custom source UUID only |
+
+The relevant API reference page lists every supported native identifier on its `sourceId` parameter. Response items retain the same value so you can round-trip the filter.
+
+## Visibility and processing
+
+REST API keys operate with organization-level context rather than as a Sybill user. Export endpoints return organization-visible records and exclude private records owned by individual users.
+
+Imported records are private by default and require at least one valid `ownerEmails` entry. Set `public: true` when a record must be available through REST export endpoints.
+
+Successful import responses confirm that Sybill stored the record and accepted it for asynchronous processing. Transcription, document conversion, summaries, search, and other derived fields may not be available immediately.
+
+## Import lifecycle
+
+<Steps>
+
+<Step title="Create a source">
+Call [`POST /v1/sources`](/api-reference/create-source). Keep the returned source UUID.
+</Step>
+
+<Step title="Define an object type when needed">
+Rows require an object type whose field definitions match the row's values. Other resource types do not.
+</Step>
+
+<Step title="Import the record">
+Send the source UUID as `sourceId` and your stable external identifier as `id`. A `201 Created` response means the record was accepted for processing.
+</Step>
+
+<Step title="Update or delete by external identity">
+Where supported, pass the same source UUID as `sourceId` and your original `id` as `remoteId`.
+</Step>
+
+</Steps>
+
+## Common errors
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Malformed request, validation failure, or invalid query parameter |
+| `401 Unauthorized` | API key is invalid or revoked |
+| `403 Forbidden` | Authorization is missing, the key lacks the required scope, or the resource belongs to another organization |
+| `404 Not Found` | Resource does not exist or is not accessible to your organization |
+| `409 Conflict` | Duplicate or concurrent write |
+| `411 Length Required` | A `POST` or `PATCH` request omitted `Content-Length` |
+| `413 Payload Too Large` | A `POST` or `PATCH` request body exceeded 10 MB |
+| `422 Unprocessable Entity` | Request validation failed |
+| `429 Too Many Requests` | Rate limit exceeded; see [Rate limiting](/rate-limiting) |
+| `500 Internal Server Error` | Unexpected server error |
+
+Import and mutation endpoints return structured error details:
+
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "exactly one of url or content must be provided",
+    "field": null,
+    "request_id": "01HV..."
+  }
+}
+```
+
+`GET` endpoints generally return `{ "detail": "<message>" }`. Endpoint-specific errors appear on the corresponding API reference page.
+
+## Explore the reference
+
+<Columns cols={3}>
+
+<Card title="Conversations" href="/api-reference/list-conversations" icon="messages-square">
+Export, inspect, import, and delete conversations.
+</Card>
+
+<Card title="Messages" href="/api-reference/list-messages" icon="mail">
+Work with native and imported messages.
+</Card>
+
+<Card title="Rows" href="/api-reference/list-rows" icon="rows-3">
+Store custom typed records.
+</Card>
+
+<Card title="Documents" href="/api-reference/list-documents" icon="file-text">
+Import and retrieve text-bearing artifacts.
+</Card>
+
+<Card title="Sources" href="/api-reference/list-sources" icon="database">
+Manage channels for imported records.
+</Card>
+
+<Card title="Object types" href="/api-reference/list-object-types" icon="table-properties">
+Define schemas for rows.
+</Card>
+
+</Columns>

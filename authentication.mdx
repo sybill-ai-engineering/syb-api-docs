@@ -1,0 +1,87 @@
+---
+title: "Authentication"
+description: "Create API keys, choose scopes, and authenticate requests to the Sybill API."
+icon: "key-round"
+---
+
+All API requests (except `/healthcheck`) require a valid API key passed as a Bearer token.
+
+## API keys
+
+API keys are created from the Sybill dashboard under [**Settings → Integrations → API Keys**](https://app.sybill.ai/settings/integrations/api-keys). Each key is scoped to your organization and can be granted specific permissions.
+
+<Info>
+
+**Key visibility**
+
+Keys use the prefix `sk_live_` followed by a random token. The full key is shown only once at creation time — store it securely.
+
+</Info>
+
+### Key format
+
+```text
+sk_live_<YOUR_API_KEY>
+```
+
+## Making requests
+
+Include the key in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <YOUR_API_KEY>" \
+  https://api.sybill.ai/v1/conversations
+```
+
+## Scopes
+
+Each API key is granted one or more permissions. The dashboard shows the
+customer-facing permission name; requests and API responses continue to use
+the corresponding API scope value.
+
+| Permission | API scope | Description |
+| --- | --- | --- |
+| **Import** | `ingest` | Import meetings, messages, and documents into Sybill; manage sources and object types (`POST`, `PATCH`, `DELETE` endpoints) |
+| **Export** | `read` | Export conversations, deals, accounts, messages, rows, documents, sources, and object types (`GET` endpoints) |
+| **Ask Sybill** | `ask_sybill` | Use the Ask Sybill AI chat via REST or MCP |
+
+The mapping of REST endpoints to permissions and API scopes is straightforward:
+
+| Endpoints | Required permission (API scope) |
+| --- | --- |
+| `GET /v1/health` | any valid key |
+| `POST /v1/ask-sybill`, `GET /v1/ask-sybill/{threadId}/{runId}` | **Ask Sybill** (`ask_sybill`) |
+| `GET` on `/v1/conversations`, `/v1/deals`, `/v1/accounts`, `/v1/messages`, `/v1/rows`, `/v1/documents`, `/v1/sources`, `/v1/object-types` | **Export** (`read`) |
+| `POST` / `PATCH` / `DELETE` on the same paths | **Import** (`ingest`) |
+
+If a request requires a permission that the key does not have, the API returns
+`403 Forbidden`. Error payloads use the API scope value:
+
+```json
+{
+  "detail": "API key missing required scope: read"
+}
+```
+
+## Key management
+
+| Action | Method |
+| --- | --- |
+| Create a key | Sybill dashboard → [Settings → Integrations → API Keys](https://app.sybill.ai/settings/integrations/api-keys) → Create |
+| List keys | Sybill dashboard → [Settings → Integrations → API Keys](https://app.sybill.ai/settings/integrations/api-keys) |
+| Revoke a key | Sybill dashboard → [Settings → Integrations → API Keys](https://app.sybill.ai/settings/integrations/api-keys) → Revoke |
+
+<Warning>
+
+**Revocation is permanent**
+
+Revoked keys immediately stop working. You cannot un-revoke a key — you must create a new one.
+
+</Warning>
+
+## Error responses
+
+| Status | Meaning |
+| --- | --- |
+| `401 Unauthorized` | API key is invalid or revoked |
+| `403 Forbidden` | Authorization header is missing, or the key is valid but lacks a required scope |

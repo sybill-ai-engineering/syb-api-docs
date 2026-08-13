@@ -1,0 +1,55 @@
+---
+title: "Rate limiting"
+description: "Understand Sybill API limits, response headers, and retry behavior."
+icon: "gauge"
+---
+
+The API enforces per-key rate limits on data endpoints using a moving window algorithm. Each API key has its own usage plan with a single set of counters shared across rate-limited requests, regardless of scope or endpoint.
+
+## Default limits
+
+| Window | Limit |
+| --- | --- |
+| Per minute | 60 requests |
+| Per hour | 1,000 requests |
+| Per day | 10,000 requests |
+
+All rate-limited requests made with the same API key count toward the same limits. Health requests do not count.
+
+## Rate limit headers
+
+A `429 Too Many Requests` response includes these headers:
+
+| Header | Description |
+| --- | --- |
+| `X-RateLimit-Limit` | Maximum number of requests allowed in the current window |
+| `X-RateLimit-Remaining` | Requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the current window resets |
+| `Retry-After` | Seconds to wait before retrying |
+
+## 429 Too Many Requests
+
+When a rate limit is exceeded, the API returns `429` with a JSON body:
+
+```json
+{
+  "detail": "Rate limit exceeded"
+}
+```
+
+The response includes `Retry-After` and `X-RateLimit-*` headers. Clients should back off and retry after the `Retry-After` period.
+
+## Best practices
+
+<Tip>
+
+**Optimizing your usage**
+
+Follow these guidelines to stay within rate limits and build resilient integrations.
+
+</Tip>
+
+- Cache responses when possible to reduce request volume.
+- Implement exponential backoff when receiving `429` responses.
+- Use `Retry-After` from a `429` response to determine when to retry.
+- Use the most specific endpoint for your use case rather than polling list endpoints repeatedly.

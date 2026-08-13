@@ -1,53 +1,176 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Sybill API",
+  "description": "Build integrations with Sybill's REST API and MCP server.",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0077B6",
+    "light": "#60CAFD",
+    "dark": "#0077B6"
+  },
+  "icons": {
+    "library": "lucide"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "authentication"
+            ]
+          },
+          {
+            "group": "REST API",
+            "pages": [
+              "api-guide",
+              "data-models",
+              "pagination",
+              "rate-limiting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "openapi": "openapi.yaml",
+        "groups": [
+          {
+            "group": "Health",
+            "pages": [
+              "GET /v1/health"
+            ]
+          },
+          {
+            "group": "Ask Sybill",
+            "pages": [
+              "POST /v1/ask-sybill",
+              "GET /v1/ask-sybill/{threadId}/{runId}"
+            ]
+          },
+          {
+            "group": "Conversations",
+            "pages": [
+              "GET /v1/conversations",
+              "GET /v1/conversations/{conversationId}",
+              "POST /v1/conversations",
+              "DELETE /v1/conversations"
+            ]
+          },
+          {
+            "group": "Deals",
+            "pages": [
+              "GET /v1/deals",
+              "GET /v1/deals/{dealId}"
+            ]
+          },
+          {
+            "group": "Accounts",
+            "pages": [
+              "GET /v1/accounts",
+              "GET /v1/accounts/{accountId}"
+            ]
+          },
+          {
+            "group": "Messages",
+            "pages": [
+              "GET /v1/messages",
+              "GET /v1/messages/{messageId}",
+              "POST /v1/messages",
+              "DELETE /v1/messages"
+            ]
+          },
+          {
+            "group": "Rows",
+            "pages": [
+              "GET /v1/rows",
+              "GET /v1/rows/{rowId}",
+              "POST /v1/rows",
+              "PATCH /v1/rows",
+              "DELETE /v1/rows"
+            ]
+          },
+          {
+            "group": "Documents",
+            "pages": [
+              "GET /v1/documents",
+              "GET /v1/documents/{documentId}",
+              "POST /v1/documents",
+              "PATCH /v1/documents",
+              "DELETE /v1/documents"
+            ]
+          },
+          {
+            "group": "Sources",
+            "pages": [
+              "GET /v1/sources",
+              "GET /v1/sources/{sourceId}",
+              "POST /v1/sources",
+              "PATCH /v1/sources/{sourceId}",
+              "DELETE /v1/sources/{sourceId}"
+            ]
+          },
+          {
+            "group": "Object types",
+            "pages": [
+              "GET /v1/object-types",
+              "GET /v1/object-types/{objectTypeId}",
+              "POST /v1/object-types",
+              "PATCH /v1/object-types/{objectTypeId}",
+              "DELETE /v1/object-types/{objectTypeId}"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "MCP",
+        "groups": [
+          {
+            "group": "Model Context Protocol",
+            "pages": [
+              "mcp-server"
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "label": "Sybill",
+        "href": "https://www.sybill.ai"
+      },
+      {
+        "label": "OpenAPI spec",
+        "href": "/openapi.yaml"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "label": "Get API key",
+      "href": "https://app.sybill.ai/settings/integrations/api-keys"
+    }
+  },
+  "api": {
+    "playground": {
+      "display": "interactive"
+    },
+    "examples": {
+      "languages": [
+        "curl",
+        "python",
+        "javascript"
+      ],
+      "defaults": "required"
     }
   },
   "contextual": {
@@ -62,11 +185,16 @@
       "vscode"
     ]
   },
+  "redirects": [
+    {
+      "source": "/endpoints",
+      "destination": "/api-guide"
+    }
+  ],
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "website": "https://www.sybill.ai",
+      "linkedin": "https://www.linkedin.com/company/sybill"
     }
   }
 }
